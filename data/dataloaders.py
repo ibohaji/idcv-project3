@@ -31,28 +31,26 @@ class PH2Dataset(torch.utils.data.Dataset):
         self.data_path = os.path.normpath(path)  # Normalize path for cross-platform compatibility
         self.split = split
         
-        # HPC structure: phc_data/train/images/ and phc_data/train/labels/
-        # Try HPC structure first, fallback to original structure
-        if split == 'test':
-            images_dir = os.path.join(self.data_path, 'test', 'images')
-            labels_dir = os.path.join(self.data_path, 'test', 'labels')
-        else:  # train or val
-            images_dir = os.path.join(self.data_path, 'train', 'images')
-            labels_dir = os.path.join(self.data_path, 'train', 'labels')
+        # Load all images and masks - support multiple file extensions (.bmp, .jpg, .gif, etc.)
+        # Try different extensions
+        extensions = ['*.bmp', '*.jpg', '*.jpeg', '*.gif', '*.png']
         
-        # Try HPC structure (jpg files)
-        image_pattern = os.path.join(images_dir, '*.jpg')
-        label_pattern = os.path.join(labels_dir, '*.jpg')
+        all_masks = []
+        all_images = []
         
-        all_images = sorted(glob.glob(image_pattern))
-        all_masks = sorted(glob.glob(label_pattern))
+        for ext in extensions:
+            mask_pattern = os.path.join(self.data_path, 'IMD*', 'IMD*_lesion', ext)
+            image_pattern = os.path.join(self.data_path, 'IMD*', 'IMD*_Dermoscopic_Image', ext)
+            
+            masks = sorted(glob.glob(mask_pattern))
+            images = sorted(glob.glob(image_pattern))
+            
+            all_masks.extend(masks)
+            all_images.extend(images)
         
-        # Fallback to original structure if HPC structure not found
-        if len(all_images) == 0:
-            mask_pattern = os.path.join(self.data_path, 'IMD*', 'IMD*_lesion', '*.bmp')
-            image_pattern = os.path.join(self.data_path, 'IMD*', 'IMD*_Dermoscopic_Image', '*.bmp')
-            all_masks = sorted(glob.glob(mask_pattern))
-            all_images = sorted(glob.glob(image_pattern))
+        # Remove duplicates and sort
+        all_masks = sorted(list(set(all_masks)))
+        all_images = sorted(list(set(all_images)))
         
         if len(all_images) != len(all_masks):
             raise ValueError(f"Mismatch: {len(all_images)} images but {len(all_masks)} masks")
