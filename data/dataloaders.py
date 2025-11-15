@@ -28,15 +28,21 @@ class PH2Dataset(torch.utils.data.Dataset):
             raise ValueError("split must be 'train', 'val', or 'test'")
         
         self.transform = transform 
-        self.data_path = path 
+        self.data_path = os.path.normpath(path)  # Normalize path for cross-platform compatibility
         self.split = split
         
-        # Load all images and masks
-        all_masks = sorted(glob.glob(self.data_path + 'IMD*/IMD*_lesion/*.bmp'))
-        all_images = sorted(glob.glob(self.data_path + 'IMD*/IMD*_Dermoscopic_Image/*.bmp'))
+        # Load all images and masks - use os.path.join for proper path handling
+        mask_pattern = os.path.join(self.data_path, 'IMD*', 'IMD*_lesion', '*.bmp')
+        image_pattern = os.path.join(self.data_path, 'IMD*', 'IMD*_Dermoscopic_Image', '*.bmp')
+        
+        all_masks = sorted(glob.glob(mask_pattern))
+        all_images = sorted(glob.glob(image_pattern))
         
         if len(all_images) != len(all_masks):
             raise ValueError(f"Mismatch: {len(all_images)} images but {len(all_masks)} masks")
+        
+        if len(all_images) == 0:
+            raise ValueError(f"No images found in dataset at: {self.data_path}. Check the path and directory structure.")
         
         # Create splits with fixed seed for reproducibility
         np.random.seed(seed)
@@ -147,6 +153,9 @@ class DRIVEDataset(torch.utils.data.Dataset):
             
             if len(all_images) != len(all_labels):
                 raise ValueError(f"Mismatch: {len(all_images)} images but {len(all_labels)} labels")
+            
+            if len(all_images) == 0:
+                raise ValueError(f"No images found in dataset at: {self.data_path}. Check the path and directory structure.")
             
             # Split training data into train/val
             np.random.seed(seed)
