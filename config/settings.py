@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     losses: List[str] = ["BCE", "Focal", "WeightedBCE"]
     optimizers: List[str] = ["adam", "sgd"]
     
+    # Dataset paths
+    dataset_paths: Dict[str, str] = {
+        "PH2": "./data/datasets/PH_dataset_images/",
+        "DRIVE": "./data/datasets/DRIVE/DRIVE/"
+    }
+    
     # Dataset normalization statistics
     normalization: Dict[str, Dict[str, List[float]]] = {
         "PH2": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]},

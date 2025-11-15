@@ -148,13 +148,18 @@ class Experiment:
         """Get train and val dataloaders for a dataset"""
         transform = self.get_transforms(dataset_name, model_name)
         
+        # Get dataset path from settings
+        dataset_path = self.settings.dataset_paths.get(dataset_name)
+        if dataset_path is None:
+            raise ValueError(f"No path configured for dataset: {dataset_name}")
+        
         if dataset_name == 'PH2':
-            train_dataset = PH2Dataset(split='train', transform=transform)
-            val_dataset = PH2Dataset(split='val', transform=transform)
+            train_dataset = PH2Dataset(split='train', transform=transform, path=dataset_path)
+            val_dataset = PH2Dataset(split='val', transform=transform, path=dataset_path)
             in_channels = 3  # PH2 images are RGB
         else:  # DRIVE
-            train_dataset = DRIVEDataset(split='train', transform=transform)
-            val_dataset = DRIVEDataset(split='val', transform=transform)
+            train_dataset = DRIVEDataset(split='train', transform=transform, path=dataset_path)
+            val_dataset = DRIVEDataset(split='val', transform=transform, path=dataset_path)
             in_channels = 3
         
         train_loader = DataLoader(

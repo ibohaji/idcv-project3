@@ -4,6 +4,11 @@ train_dir: "./data/train"
 val_dir: "./data/val"
 test_dir: "./data/test"
 
+# Dataset paths
+dataset_paths:
+  PH2: "C:/Users/ibrahim/Documents/DTU/introduction-dplrng-cv/project3/data/datasets/PH_dataset_images/"
+  DRIVE: "C:/Users/ibrahim/Documents/DTU/introduction-dplrng-cv/project3/data/datasets/DRIVE/DRIVE/"
+
 # Training settings
 device: "cuda"
 num_workers: 4
