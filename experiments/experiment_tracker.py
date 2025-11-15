@@ -373,8 +373,15 @@ class Experiment:
                 best_val_dice = val_metrics.get('dice', 0.0)
                 best_epoch = epoch + 1
             
-            print(f"Train Loss: {train_metrics['loss']:.4f}, Val Loss: {val_metrics['loss']:.4f}")
-            print(f"Val Dice: {val_metrics.get('dice', 0):.4f}, Val IoU: {val_metrics.get('iou', 0):.4f}")
+            # Display all metrics in a formatted table
+            print(f"\n  {'Metric':<12} | {'Train':<8} | {'Val':<8}")
+            print(f"  {'-'*12}-+-{'-'*8}-+-{'-'*8}")
+            print(f"  {'Loss':<12} | {train_metrics['loss']:>8.4f} | {val_metrics['loss']:>8.4f}")
+            print(f"  {'Dice':<12} | {train_metrics.get('dice', 0):>8.4f} | {val_metrics.get('dice', 0):>8.4f}")
+            print(f"  {'IoU':<12} | {train_metrics.get('iou', 0):>8.4f} | {val_metrics.get('iou', 0):>8.4f}")
+            print(f"  {'Accuracy':<12} | {train_metrics.get('accuracy', 0):>8.4f} | {val_metrics.get('accuracy', 0):>8.4f}")
+            print(f"  {'Sensitivity':<12} | {train_metrics.get('sensitivity', 0):>8.4f} | {val_metrics.get('sensitivity', 0):>8.4f}")
+            print(f"  {'Specificity':<12} | {train_metrics.get('specificity', 0):>8.4f} | {val_metrics.get('specificity', 0):>8.4f}")
         
         total_time = time.time() - start_time
         
