@@ -183,6 +183,13 @@ class Experiment:
         Only saves the best checkpoint per dataset (not per experiment).
         """
         for dataset_name in datasets:
+            # Check if results already exist for this dataset
+            existing_results = list(self.tracker.output_dir.glob(f"{self.experiment_name}_{dataset_name}_*.json"))
+            if existing_results:
+                print(f"\n{'='*60}\nDataset: {dataset_name} - SKIPPING (results already exist)\n{'='*60}")
+                print(f"Found existing results: {existing_results[0].name}")
+                continue
+            
             print(f"\n{'='*60}\nDataset: {dataset_name}\n{'='*60}")
             
             # Collect all experiments for this dataset
