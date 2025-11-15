@@ -28,35 +28,18 @@ class PH2Dataset(torch.utils.data.Dataset):
             raise ValueError("split must be 'train', 'val', or 'test'")
         
         self.transform = transform 
-        self.data_path = os.path.normpath(path)  # Normalize path for cross-platform compatibility
+        self.data_path = os.path.normpath(path)
+        # Ensure path ends with separator for glob pattern
+        if not self.data_path.endswith(os.sep):
+            self.data_path += os.sep
         self.split = split
         
-        # Load all images and masks - support multiple file extensions (.bmp, .jpg, .gif, etc.)
-        # Try different extensions
-        extensions = ['*.bmp', '*.jpg', '*.jpeg', '*.gif', '*.png']
-        
-        all_masks = []
-        all_images = []
-        
-        for ext in extensions:
-            mask_pattern = os.path.join(self.data_path, 'IMD*', 'IMD*_lesion', ext)
-            image_pattern = os.path.join(self.data_path, 'IMD*', 'IMD*_Dermoscopic_Image', ext)
-            
-            masks = sorted(glob.glob(mask_pattern))
-            images = sorted(glob.glob(image_pattern))
-            
-            all_masks.extend(masks)
-            all_images.extend(images)
-        
-        # Remove duplicates and sort
-        all_masks = sorted(list(set(all_masks)))
-        all_images = sorted(list(set(all_images)))
+        # Load all images and masks
+        all_masks = sorted(glob.glob(self.data_path + 'IMD*/IMD*_lesion/*.bmp'))
+        all_images = sorted(glob.glob(self.data_path + 'IMD*/IMD*_Dermoscopic_Image/*.bmp'))
         
         if len(all_images) != len(all_masks):
             raise ValueError(f"Mismatch: {len(all_images)} images but {len(all_masks)} masks")
-        
-        if len(all_images) == 0:
-            raise ValueError(f"No images found in dataset at: {self.data_path}. Check the path and directory structure.")
         
         # Create splits with fixed seed for reproducibility
         np.random.seed(seed)
