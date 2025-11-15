@@ -1,0 +1,10 @@
+typer[all]
+pydantic
+pydantic-settings
+pyyaml
+torch
+torchvision
+albumentations
+tqdm
+pillow
+numpy

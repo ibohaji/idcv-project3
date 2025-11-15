@@ -1,0 +1,76 @@
+# Data directories
+data/
+datasets/
+*.csv
+*.json
+*.pkl
+*.h5
+*.hdf5
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+myenv/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Model checkpoints and outputs
+checkpoints/
+outputs/
+logs/
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.pkl
+
+# Experiment results (optional - uncomment if you don't want to track JSON results)
+# outputs/*.json
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# PyTorch
+*.pth.tar
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*.swp
+

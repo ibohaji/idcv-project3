@@ -1,0 +1,47 @@
+# Data settings
+data_dir: "./data"
+train_dir: "./data/train"
+val_dir: "./data/val"
+test_dir: "./data/test"
+
+# Training settings
+device: "cuda"
+num_workers: 4
+pin_memory: true
+
+# Output settings
+output_dir: "./outputs"
+checkpoint_dir: "./checkpoints"
+log_dir: "./logs"
+save_best_only: true
+
+# Logging
+log_interval: 10
+save_interval: 5
+
+# Ablation study configurations
+models:
+  - "EncoderDecoder"
+  - "Unet"
+
+datasets:
+  - "PH2"
+  - "DRIVE"
+
+losses:
+  - "BCE"
+  - "Focal"
+  - "WeightedBCE"
+
+optimizers:
+  - "adamW"
+  - "sgd"
+
+# Dataset normalization statistics (calculated from training data)
+normalization:
+  PH2:
+    mean: [0.757698118686676, 0.5811884999275208, 0.4908384084701538]
+    std: [0.1657993644475937, 0.16264420747756958, 0.16125528514385223]
+  DRIVE:
+    mean: [0.4821021854877472, 0.2632019519805908, 0.15606312453746796]
+    std: [0.3210512697696686, 0.17354314029216766, 0.09485668689012527]
