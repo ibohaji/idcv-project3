@@ -13,7 +13,7 @@ from albumentations.pytorch import ToTensorV2
 from config.settings import load_settings_from_yaml
 from data.dataloaders import PH2Dataset, DRIVEDataset
 from models import EncoderDecoder, Unet
-from analysis.visualize_predictions import load_model, get_test_dataloader, denormalize_image
+from analysis.visualize_predictions import load_model, get_dataloader, denormalize_image
 
 
 def visualize_multiple_models(
@@ -68,17 +68,13 @@ def visualize_multiple_models(
             if sample_count >= num_samples:
                 break
             
-            # Handle test set
-            if dataset_name == 'DRIVE' and isinstance(batch_data, torch.Tensor):
-                images = batch_data.to(device)
-                masks = None
-            else:
-                images, masks = batch_data
-                images = images.to(device)
-                if masks is not None:
-                    if masks.dim() == 3:
-                        masks = masks.unsqueeze(1)
-                    masks = masks.to(device)
+            # Get images and masks (val set has ground truth for both datasets)
+            images, masks = batch_data
+            images = images.to(device)
+            if masks is not None:
+                if masks.dim() == 3:
+                    masks = masks.unsqueeze(1)
+                masks = masks.to(device)
             
             # Denormalize image
             image_np = denormalize_image(images[0].cpu(), mean, std)
@@ -98,12 +94,8 @@ def visualize_multiple_models(
             
             # Plot ground truth
             ax = axes[sample_count, 1]
-            if gt_np is not None:
-                ax.imshow(gt_np, cmap='gray')
-                ax.set_title('Ground Truth', fontsize=11, fontweight='bold')
-            else:
-                ax.text(0.5, 0.5, 'No GT\n(Test Set)', ha='center', va='center', fontsize=12)
-                ax.set_title('Ground Truth (N/A)', fontsize=11, fontweight='bold')
+            ax.imshow(gt_np, cmap='gray')
+            ax.set_title('Ground Truth', fontsize=11, fontweight='bold')
             ax.axis('off')
             
             # Get predictions from each model
@@ -125,7 +117,7 @@ def visualize_multiple_models(
             sample_count += 1
     
     plt.suptitle(
-        f'{dataset_name} - Model Comparison\nTest Set Predictions',
+        f'{dataset_name} - Model Comparison\nValidation Set Predictions',
         fontsize=16,
         fontweight='bold',
         y=0.995
@@ -197,10 +189,10 @@ def main():
         best_config = checkpoint.get('best_config', {})
         model_name = best_config.get('model', 'EncoderDecoder')
         
-        # Get test dataloader
-        print(f"Loading test dataset from: {dataset_path}")
-        test_loader = get_test_dataloader(dataset_name, dataset_path, model_name, settings)
-        print(f"Test samples: {len(test_loader.dataset)}")
+        # Get validation dataloader (has ground truth)
+        print(f"Loading validation dataset from: {dataset_path}")
+        val_loader = get_dataloader(dataset_name, dataset_path, model_name, settings, split='val')
+        print(f"Validation samples: {len(val_loader.dataset)}")
         
         # Generate filename
         filename = f"{dataset_name}_model_comparison.png"
@@ -210,9 +202,9 @@ def main():
         print(f"\nGenerating comparison visualizations for {args.num_samples} samples...")
         visualize_multiple_models(
             checkpoints=dataset_checkpoints,
-            dataloader=test_loader,
+            dataloader=val_loader,
             device=args.device,
-            num_samples=min(args.num_samples, len(test_loader.dataset)),
+            num_samples=min(args.num_samples, len(val_loader.dataset)),
             dataset_name=dataset_name,
             save_path=save_path
         )

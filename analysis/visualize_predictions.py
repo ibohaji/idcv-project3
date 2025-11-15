@@ -42,8 +42,8 @@ def load_model(checkpoint_path: Path, model_name: str, in_channels: int = 3):
     return model, checkpoint.get('best_config', {})
 
 
-def get_test_dataloader(dataset_name: str, dataset_path: str, model_name: str, settings):
-    """Get test dataloader for a dataset."""
+def get_dataloader(dataset_name: str, dataset_path: str, model_name: str, settings, split='val'):
+    """Get dataloader for a dataset (train/val/test)."""
     # Get normalization stats
     norm_stats = settings.normalization.get(dataset_name, {
         "mean": [0.5, 0.5, 0.5],
@@ -67,21 +67,21 @@ def get_test_dataloader(dataset_name: str, dataset_path: str, model_name: str, s
     
     # Create dataset
     if dataset_name == 'PH2':
-        test_dataset = PH2Dataset(split='test', transform=transform, path=dataset_path)
+        dataset = PH2Dataset(split=split, transform=transform, path=dataset_path)
     elif dataset_name == 'DRIVE':
-        test_dataset = DRIVEDataset(split='test', transform=transform, path=dataset_path)
+        dataset = DRIVEDataset(split=split, transform=transform, path=dataset_path)
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
     
-    test_loader = DataLoader(
-        test_dataset,
+    loader = DataLoader(
+        dataset,
         batch_size=1,
         shuffle=False,
         num_workers=0,
         pin_memory=False
     )
     
-    return test_loader
+    return loader
 
 
 def denormalize_image(image_tensor, mean, std):
@@ -126,17 +126,13 @@ def visualize_predictions(
             if sample_count >= num_samples:
                 break
             
-            # Handle test set (DRIVE test set returns only images)
-            if dataset_name == 'DRIVE' and isinstance(batch_data, torch.Tensor):
-                images = batch_data.to(device)
-                masks = None  # No ground truth for DRIVE test set
-            else:
-                images, masks = batch_data
-                images = images.to(device)
-                if masks is not None:
-                    if masks.dim() == 3:
-                        masks = masks.unsqueeze(1)
-                    masks = masks.to(device)
+            # Get images and masks (val set has ground truth for both datasets)
+            images, masks = batch_data
+            images = images.to(device)
+            if masks is not None:
+                if masks.dim() == 3:
+                    masks = masks.unsqueeze(1)
+                masks = masks.to(device)
             
             # Get predictions
             outputs = model(images)
@@ -167,14 +163,9 @@ def visualize_predictions(
             ax1.set_title(f'Sample {sample_count + 1}: Original Image', fontsize=12, fontweight='bold')
             ax1.axis('off')
             
-            # Ground truth (if available)
-            if gt_np is not None:
-                ax2.imshow(gt_np, cmap='gray')
-                ax2.set_title('Ground Truth', fontsize=12, fontweight='bold')
-            else:
-                ax2.text(0.5, 0.5, 'No Ground Truth\n(Test Set)', 
-                        ha='center', va='center', fontsize=14)
-                ax2.set_title('Ground Truth (N/A)', fontsize=12, fontweight='bold')
+            # Ground truth
+            ax2.imshow(gt_np, cmap='gray')
+            ax2.set_title('Ground Truth', fontsize=12, fontweight='bold')
             ax2.axis('off')
             
             # Prediction
@@ -185,7 +176,7 @@ def visualize_predictions(
             sample_count += 1
     
     plt.suptitle(
-        f'{dataset_name} - {model_name} - {loss_name}\nTest Set Predictions',
+        f'{dataset_name} - {model_name} - {loss_name}\nValidation Set Predictions',
         fontsize=16,
         fontweight='bold',
         y=0.995
@@ -248,10 +239,10 @@ def main():
         print(f"Error: No path configured for dataset: {dataset_name}")
         return
     
-    # Get test dataloader
-    print(f"Loading test dataset from: {dataset_path}")
-    test_loader = get_test_dataloader(dataset_name, dataset_path, model_name, settings)
-    print(f"Test samples: {len(test_loader.dataset)}")
+    # Get validation dataloader (has ground truth)
+    print(f"Loading validation dataset from: {dataset_path}")
+    val_loader = get_dataloader(dataset_name, dataset_path, model_name, settings, split='val')
+    print(f"Validation samples: {len(val_loader.dataset)}")
     
     # Create save directory
     save_dir = Path(args.save_dir)
@@ -265,9 +256,9 @@ def main():
     print(f"\nGenerating visualizations for {args.num_samples} samples...")
     visualize_predictions(
         model=model,
-        dataloader=test_loader,
+        dataloader=val_loader,
         device=args.device,
-        num_samples=min(args.num_samples, len(test_loader.dataset)),
+        num_samples=min(args.num_samples, len(val_loader.dataset)),
         dataset_name=dataset_name,
         model_name=model_name,
         loss_name=loss_name,
