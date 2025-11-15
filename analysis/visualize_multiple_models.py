@@ -164,48 +164,59 @@ def main():
     # Load settings
     settings = load_settings_from_yaml(Path("config/settings.yaml"))
     
-    # Get dataset from first checkpoint
-    checkpoint = torch.load(checkpoint_paths[0], map_location='cpu', weights_only=False)
-    dataset_name = checkpoint.get('dataset', 'Unknown')
+    # Group checkpoints by dataset
+    checkpoints_by_dataset = {}
+    for cp_path in checkpoint_paths:
+        checkpoint = torch.load(cp_path, map_location='cpu', weights_only=False)
+        dataset_name = checkpoint.get('dataset', 'Unknown')
+        if dataset_name not in checkpoints_by_dataset:
+            checkpoints_by_dataset[dataset_name] = []
+        checkpoints_by_dataset[dataset_name].append(cp_path)
     
-    print(f"Dataset: {dataset_name}")
-    print(f"Loading {len(checkpoint_paths)} models...")
-    
-    # Get dataset path
-    dataset_path = settings.dataset_paths.get(dataset_name)
-    if dataset_path is None:
-        print(f"Error: No path configured for dataset: {dataset_name}")
-        return
-    
-    # Get model name from first checkpoint for dataloader
-    best_config = checkpoint.get('best_config', {})
-    model_name = best_config.get('model', 'EncoderDecoder')
-    
-    # Get test dataloader
-    print(f"Loading test dataset from: {dataset_path}")
-    test_loader = get_test_dataloader(dataset_name, dataset_path, model_name, settings)
-    print(f"Test samples: {len(test_loader.dataset)}")
+    print(f"Found checkpoints for {len(checkpoints_by_dataset)} dataset(s): {list(checkpoints_by_dataset.keys())}")
     
     # Create save directory
     save_dir = Path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     
-    # Generate filename
-    filename = f"{dataset_name}_model_comparison.png"
-    save_path = save_dir / filename
-    
-    # Visualize
-    print(f"\nGenerating comparison visualizations for {args.num_samples} samples...")
-    visualize_multiple_models(
-        checkpoints=checkpoint_paths,
-        dataloader=test_loader,
-        device=args.device,
-        num_samples=min(args.num_samples, len(test_loader.dataset)),
-        dataset_name=dataset_name,
-        save_path=save_path
-    )
-    
-    print(f"\nComparison saved to: {save_path}")
+    # Visualize each dataset separately
+    for dataset_name, dataset_checkpoints in checkpoints_by_dataset.items():
+        print(f"\n{'='*60}")
+        print(f"Processing dataset: {dataset_name} ({len(dataset_checkpoints)} models)")
+        print(f"{'='*60}")
+        
+        # Get dataset path
+        dataset_path = settings.dataset_paths.get(dataset_name)
+        if dataset_path is None:
+            print(f"Error: No path configured for dataset: {dataset_name}")
+            continue
+        
+        # Get model name from first checkpoint for dataloader (all should be same dataset)
+        checkpoint = torch.load(dataset_checkpoints[0], map_location='cpu', weights_only=False)
+        best_config = checkpoint.get('best_config', {})
+        model_name = best_config.get('model', 'EncoderDecoder')
+        
+        # Get test dataloader
+        print(f"Loading test dataset from: {dataset_path}")
+        test_loader = get_test_dataloader(dataset_name, dataset_path, model_name, settings)
+        print(f"Test samples: {len(test_loader.dataset)}")
+        
+        # Generate filename
+        filename = f"{dataset_name}_model_comparison.png"
+        save_path = save_dir / filename
+        
+        # Visualize
+        print(f"\nGenerating comparison visualizations for {args.num_samples} samples...")
+        visualize_multiple_models(
+            checkpoints=dataset_checkpoints,
+            dataloader=test_loader,
+            device=args.device,
+            num_samples=min(args.num_samples, len(test_loader.dataset)),
+            dataset_name=dataset_name,
+            save_path=save_path
+        )
+        
+        print(f"\nComparison saved to: {save_path}")
 
 
 if __name__ == '__main__':
