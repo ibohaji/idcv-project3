@@ -67,7 +67,12 @@ class WeightedBCE(torch.nn.Module):
         # Calculate per-sample loss (not averaged)
         bce_per_pixel = torch.nn.functional.binary_cross_entropy_with_logits(y_pred, y_true, reduction='none')
         # Calculate weight per sample based on positive class frequency
-        alpha_i = 1 / (y_true.sum(dim=[1,2,3]) + 1e-6)
+        # Inverse frequency: samples with fewer positive pixels get higher weight
+        positive_pixels = y_true.sum(dim=[1,2,3])
+        alpha_i = 1 / (positive_pixels + 1e-6)
+        # Clip alpha_i to prevent extreme weights that can cause instability
+        # This prevents samples with very few positive pixels from dominating
+        alpha_i = torch.clamp(alpha_i, min=1e-6, max=1e3)
         # Average loss per sample, then weight
         loss_per_sample = bce_per_pixel.mean(dim=[1,2,3])  # [batch_size]
         weighted_loss = alpha_i * loss_per_sample
