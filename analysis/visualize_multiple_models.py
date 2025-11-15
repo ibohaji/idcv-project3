@@ -103,14 +103,14 @@ def visualize_multiple_models(
                 outputs = model(images)
                 predictions = torch.sigmoid(outputs)
                 predictions_binary = (predictions > 0.5).float()
-                pred_np = predictions_binary[0, 0].cpu().numpy()
                 pred_prob = predictions[0, 0].cpu().numpy()
                 
                 config = model_configs[model_idx]
-                title = f"{config['model']}\n{config['loss']} + {config['optimizer']}\nDice: {config['dice']:.3f}"
+                title = f"{config['model']}\n{config['loss']} + {config['optimizer']}\nDice: {config['dice']:.3f}\nMax: {pred_prob.max():.3f}"
                 
                 ax = axes[sample_count, 2 + model_idx]
-                ax.imshow(pred_np, cmap='gray')
+                # Show probability map to see if there's any signal (not just binary)
+                ax.imshow(pred_prob, cmap='gray', vmin=0, vmax=1)
                 ax.set_title(title, fontsize=10, fontweight='bold')
                 ax.axis('off')
             

@@ -168,9 +168,9 @@ def visualize_predictions(
             ax2.set_title('Ground Truth', fontsize=12, fontweight='bold')
             ax2.axis('off')
             
-            # Prediction
-            ax3.imshow(pred_np, cmap='gray')
-            ax3.set_title(f'Prediction (Prob: {pred_prob.max():.3f})', fontsize=12, fontweight='bold')
+            # Prediction - show probability map (not just binary) to see if there's any signal
+            ax3.imshow(pred_prob, cmap='gray', vmin=0, vmax=1)
+            ax3.set_title(f'Prediction (Max Prob: {pred_prob.max():.3f}, Mean: {pred_prob.mean():.3f})', fontsize=12, fontweight='bold')
             ax3.axis('off')
             
             sample_count += 1
