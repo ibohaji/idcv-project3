@@ -19,7 +19,7 @@ from infra.losses import BCE, FocalLoss, WeightedBCE
 
 def load_model(checkpoint_path: Path, model_name: str, in_channels: int = 3):
     """Load a model from checkpoint."""
-    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     
     # Get model configuration from checkpoint
     if 'best_config' in checkpoint:
@@ -224,7 +224,7 @@ def main():
     
     # Load checkpoint
     print(f"Loading checkpoint: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     
     # Get dataset and model info from checkpoint
     dataset_name = checkpoint.get('dataset', 'Unknown')

@@ -30,7 +30,7 @@ def visualize_multiple_models(
     
     # Load all models
     for checkpoint_path in checkpoints:
-        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
         best_config = checkpoint.get('best_config', {})
         model_name = best_config.get('model', 'Unknown')
         in_channels = best_config.get('in_channels', 3)
@@ -165,7 +165,7 @@ def main():
     settings = load_settings_from_yaml(Path("config/settings.yaml"))
     
     # Get dataset from first checkpoint
-    checkpoint = torch.load(checkpoint_paths[0], map_location='cpu')
+    checkpoint = torch.load(checkpoint_paths[0], map_location='cpu', weights_only=False)
     dataset_name = checkpoint.get('dataset', 'Unknown')
     
     print(f"Dataset: {dataset_name}")
