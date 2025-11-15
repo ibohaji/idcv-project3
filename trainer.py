@@ -24,12 +24,13 @@ class Trainer:
         self.device = device
         self.metrics = metrics or {}
         
-    def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
+    def train_epoch(self, dataloader: DataLoader, desc_prefix: str = "") -> Dict[str, float]:
         self.model.train()
         total_loss = 0.0
         metric_values = {name: [] for name in self.metrics.keys()}
         
-        pbar = tqdm(dataloader, desc="Training")
+        desc = f"{desc_prefix}Training" if desc_prefix else "Training"
+        pbar = tqdm(dataloader, desc=desc)
         for batch_idx, (images, masks) in enumerate(pbar):
             images = images.to(self.device)
             # Handle mask format - ensure it's float and correct shape
@@ -61,13 +62,14 @@ class Trainer:
         
         return {'loss': avg_loss, **avg_metrics}
     
-    def evaluate(self, dataloader: DataLoader) -> Dict[str, float]:
+    def evaluate(self, dataloader: DataLoader, desc_prefix: str = "") -> Dict[str, float]:
         self.model.eval()
         total_loss = 0.0
         metric_values = {name: [] for name in self.metrics.keys()}
         
         with torch.no_grad():
-            pbar = tqdm(dataloader, desc="Evaluating")
+            desc = f"{desc_prefix}Evaluating" if desc_prefix else "Evaluating"
+            pbar = tqdm(dataloader, desc=desc)
             for images, masks in pbar:
                 images = images.to(self.device)
                 # Handle mask format - ensure it's float and correct shape

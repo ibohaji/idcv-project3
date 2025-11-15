@@ -352,15 +352,18 @@ class Experiment:
         train_history = []
         val_history = []
         
+        # Create description prefix for progress bars
+        desc_prefix = f"[{dataset_name} | {model_name} | {optimizer_name} | {loss_name}] "
+        
         for epoch in range(self.parameters.epochs):
             print(f"\nEpoch {epoch+1}/{self.parameters.epochs}")
             
             # Train
-            train_metrics = trainer.train_epoch(train_loader)
+            train_metrics = trainer.train_epoch(train_loader, desc_prefix=desc_prefix)
             train_history.append(train_metrics)
             
             # Validate
-            val_metrics = trainer.evaluate(val_loader)
+            val_metrics = trainer.evaluate(val_loader, desc_prefix=desc_prefix)
             val_history.append(val_metrics)
             
             # Update scheduler
