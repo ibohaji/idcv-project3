@@ -102,8 +102,8 @@ class Experiment:
         else:
             raise ValueError(f"Unknown loss: {loss_name}")
     
-    def get_transforms(self, dataset_name: str, model_name: str = None):
-        """Get transforms - resize and normalize using dataset-specific mean/std from settings"""
+    def get_transforms(self, dataset_name: str, model_name: str = None, is_training: bool = True):
+        """Get transforms - resize, augment (if training), and normalize using dataset-specific mean/std from settings"""
         # Get normalization values from settings
         norm_stats = self.settings.normalization.get(dataset_name, {
             "mean": [0.5, 0.5, 0.5],
@@ -112,41 +112,35 @@ class Experiment:
         mean = norm_stats["mean"]
         std = norm_stats["std"]
         
-        if dataset_name == 'PH2':
-            # PH2: RGB images (~575x766)
-            if model_name and model_name.lower() == 'encoderdecoder':
-                # EncoderDecoder: 200x200 RGB
-                return A.Compose([
-                    A.Resize(200, 200),
-                    A.Normalize(mean=mean, std=std),
-                    ToTensorV2()
-                ])
-            else:
-                # Unet: 256x256 RGB
-                return A.Compose([
-                    A.Resize(256, 256),
-                    A.Normalize(mean=mean, std=std),
-                    ToTensorV2()
-                ])
-        else:  # DRIVE: RGB images
-            if model_name and model_name.lower() == 'encoderdecoder':
-                # EncoderDecoder: 200x200 RGB
-                return A.Compose([
-                    A.Resize(200, 200),
-                    A.Normalize(mean=mean, std=std),
-                    ToTensorV2()
-                ])
-            else:
-                # Unet: 256x256 RGB
-                return A.Compose([
-                    A.Resize(256, 256),
-                    A.Normalize(mean=mean, std=std),
-                    ToTensorV2()
-                ])
+        # Determine resize dimensions
+        if model_name and model_name.lower() == 'encoderdecoder':
+            resize_h, resize_w = 200, 200
+        else:
+            resize_h, resize_w = 256, 256
+        
+        # Base transforms: resize and normalize
+        transforms = [
+            A.Resize(resize_h, resize_w),
+            A.Normalize(mean=mean, std=std),
+            ToTensorV2()
+        ]
+        
+        # Add augmentation only for training
+        if is_training:
+            augmentation = [
+                A.HorizontalFlip(p=0.5),
+                A.VerticalFlip(p=0.5),
+                A.RandomRotate90(p=0.5),
+            ]
+            # Insert augmentation before normalization
+            transforms = [A.Resize(resize_h, resize_w)] + augmentation + [A.Normalize(mean=mean, std=std), ToTensorV2()]
+        
+        return A.Compose(transforms)
     
     def get_dataloaders(self, dataset_name: str, model_name: str = None):
         """Get train and val dataloaders for a dataset"""
-        transform = self.get_transforms(dataset_name, model_name)
+        train_transform = self.get_transforms(dataset_name, model_name, is_training=True)
+        val_transform = self.get_transforms(dataset_name, model_name, is_training=False)
         
         # Get dataset path from settings
         dataset_path = self.settings.dataset_paths.get(dataset_name)
@@ -154,12 +148,12 @@ class Experiment:
             raise ValueError(f"No path configured for dataset: {dataset_name}")
         
         if dataset_name == 'PH2':
-            train_dataset = PH2Dataset(split='train', transform=transform, path=dataset_path)
-            val_dataset = PH2Dataset(split='val', transform=transform, path=dataset_path)
+            train_dataset = PH2Dataset(split='train', transform=train_transform, path=dataset_path)
+            val_dataset = PH2Dataset(split='val', transform=val_transform, path=dataset_path)
             in_channels = 3  # PH2 images are RGB
         else:  # DRIVE
-            train_dataset = DRIVEDataset(split='train', transform=transform, path=dataset_path)
-            val_dataset = DRIVEDataset(split='val', transform=transform, path=dataset_path)
+            train_dataset = DRIVEDataset(split='train', transform=train_transform, path=dataset_path)
+            val_dataset = DRIVEDataset(split='val', transform=val_transform, path=dataset_path)
             in_channels = 3
         
         train_loader = DataLoader(

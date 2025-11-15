@@ -95,6 +95,11 @@ class PH2Dataset(torch.utils.data.Dataset):
 
             X = transformed['image']
             Y = transformed['mask']
+            
+            # Normalize mask to [0, 1] - A.Normalize() skips masks, ToTensorV2() preserves values
+            # Masks remain in [0, 255] after transform, but loss functions need [0, 1]
+            if Y.max() > 1.0:
+                Y = Y.float() / 255.0
 
         else: 
             X = image 
@@ -211,9 +216,14 @@ class DRIVEDataset(torch.utils.data.Dataset):
                 elif label_array.dtype != np.uint8:
                     label_array = label_array.astype(np.uint8)
                 
-                transformed = self.transform(image=image_array, mask=label_array)
-                X = transformed['image']
-                Y = transformed['mask']
+                    transformed = self.transform(image=image_array, mask=label_array)
+                    X = transformed['image']
+                    Y = transformed['mask']
+                    
+                    # Normalize mask to [0, 1] - A.Normalize() skips masks, ToTensorV2() preserves values
+                    # Masks remain in [0, 255] after transform, but loss functions need [0, 1]
+                    if Y.max() > 1.0:
+                        Y = Y.float() / 255.0
             else:
                 X = image
                 Y = label
