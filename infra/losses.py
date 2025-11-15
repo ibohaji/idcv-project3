@@ -17,7 +17,13 @@ class FocalLoss(torch.nn.Module):
     2. Upweighting hard examples (low confidence predictions)
     3. Class-specific alpha balancing positive vs negative class
     """
-    def __init__(self, alpha=0.25, gamma=2):
+    def __init__(self, alpha=0.75, gamma=2):
+        """
+        Args:
+            alpha: Weighting factor for positive class. Should be > 0.5 for imbalanced datasets
+                   to upweight the minority class. Default 0.75 (upweights positive class 3x more).
+            gamma: Focusing parameter. Higher values focus more on hard examples.
+        """
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
