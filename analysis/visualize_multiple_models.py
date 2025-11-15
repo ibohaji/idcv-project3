@@ -174,6 +174,7 @@ def main():
         checkpoints_by_dataset[dataset_name].append(cp_path)
     
     print(f"Found checkpoints for {len(checkpoints_by_dataset)} dataset(s): {list(checkpoints_by_dataset.keys())}")
+    print(f"This will generate {len(checkpoints_by_dataset)} separate comparison plot(s), one per dataset.\n")
     
     # Create save directory
     save_dir = Path(args.save_dir)
