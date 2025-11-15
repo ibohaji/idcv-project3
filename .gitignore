@@ -1,6 +1,5 @@
 # Data directories
-data/
-datasets/
+data/datasets
 *.csv
 *.json
 *.pkl
