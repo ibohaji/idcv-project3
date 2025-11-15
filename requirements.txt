@@ -8,3 +8,6 @@ albumentations
 tqdm
 pillow
 numpy
+matplotlib
+seaborn
+pandas

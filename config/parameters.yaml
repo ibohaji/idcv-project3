@@ -1,6 +1,6 @@
 # Training hyperparameters (shared across all experiments)
 batch_size: 64
-epochs: 100
+epochs: 50
 weight_decay: 0.0001
 momentum: 0.9
 
