@@ -26,7 +26,6 @@ save_interval: 5
 
 # Ablation study configurations
 models:
-  - "EncoderDecoder"
   - "Unet"
 
 # For now, run the ablation only on DRIVE
