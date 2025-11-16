@@ -423,18 +423,23 @@ def plot_dataset_comparison(all_experiments: List[Dict[str, Any]],
 
 def plot_focal_gamma_losses_from_json(
     json_path: Path,
-    metric: str = "best_val_loss",
     model: Optional[str] = None,
+    optimizer: Optional[str] = None,
+    bins: int = 50,
     show: bool = True,
     save_path: Optional[Path] = None,
 ) -> None:
     """
-    Plot a line curve of a validation metric vs. FocalLoss gamma, for each optimizer.
+    Plot empirical Focal Loss vs. probability p_t for different gamma values (one line per gamma).
+
+    Uses the per-pixel samples stored as 'probability_samples' and 'focal_loss_samples'
+    in the validation history (collected when using FocalLoss).
 
     Args:
-        json_path: Path to the dataset-level experiment JSON (e.g., segmentation_ablation_DRIVE_*.json)
-        metric: Column/metric to plot on the y-axis (e.g., 'best_val_loss', 'best_val_sensitivity')
-        model: Optional model name to filter by ('Unet', 'EncoderDecoder'); if None, use all and average.
+        json_path: Path to the dataset-level experiment JSON (e.g. outputs/DRIVE_GAMMA_STUDY.json).
+        model: Optional model name to filter by (e.g. 'Unet'). If None, use all models.
+        optimizer: Optional optimizer name to filter by (e.g. 'adamW'). If None, use all.
+        bins: Number of probability bins between 0 and 1 for averaging the loss.
         show: Whether to display the plot.
         save_path: Optional path to save the figure.
     """
@@ -442,62 +447,113 @@ def plot_focal_gamma_losses_from_json(
     with json_path.open("r") as f:
         exp_dict = json.load(f)
 
-    df = extract_experiment_data(exp_dict)
-
-    # Only keep Focal losses
-    df = df[df["loss"].str.lower().str.startswith("focal")]
-    if df.empty:
-        print("No Focal losses found in JSON; nothing to plot.")
+    experiments = exp_dict.get("experiments", [])
+    if not experiments:
+        print("No experiments found in JSON; nothing to plot.")
         return
 
-    # Optional: filter by model
-    if model is not None:
-        df = df[df["model"].str.lower() == model.lower()]
-        if df.empty:
-            print(f"No experiments found for model='{model}' with Focal losses.")
-            return
+    # Collect samples per gamma
+    gamma_to_probs: Dict[int, List[float]] = {}
+    gamma_to_losses: Dict[int, List[float]] = {}
 
-    # Extract gamma from loss name, defaulting to 2 if no digits found
-    df = df.copy()
-    gammas = df["loss"].str.extract(r"(\d+)")[0].fillna("2").astype(int)
-    df["gamma"] = gammas
+    for exp in experiments:
+        loss_name = exp.get("loss", "")
+        if not str(loss_name).lower().startswith("focal"):
+            continue
 
-    # Aggregate metric per optimizer & gamma
-    if metric not in df.columns:
-        raise ValueError(f"Metric '{metric}' not found in dataframe columns: {df.columns.tolist()}")
+        if model is not None and exp.get("model", "").lower() != model.lower():
+            continue
 
-    grouped = (
-        df.groupby(["optimizer", "gamma"])[metric]
-        .mean()
-        .reset_index()
-        .sort_values(["optimizer", "gamma"])
-    )
+        if optimizer is not None and exp.get("optimizer", "").lower() != optimizer.lower():
+            continue
+
+        # Parse gamma from loss name (e.g. 'Focal1', 'Focal_3')
+        loss_str = str(loss_name)
+        digits = "".join(ch for ch in loss_str if ch.isdigit())
+        gamma = int(digits) if digits else 2
+
+        results = exp.get("results", {})
+        val_history = results.get("val_history", [])
+        if not val_history:
+            continue
+
+        # Use the last validation epoch as representative
+        last_val = val_history[-1]
+        probs = last_val.get("probability_samples")
+        losses = last_val.get("focal_loss_samples")
+
+        if probs is None or losses is None:
+            continue
+
+        if gamma not in gamma_to_probs:
+            gamma_to_probs[gamma] = []
+            gamma_to_losses[gamma] = []
+
+        gamma_to_probs[gamma].extend(probs)
+        gamma_to_losses[gamma].extend(losses)
+
+    if not gamma_to_probs:
+        print("No probability/loss samples found for FocalLoss; did you run with the updated Trainer?")
+        return
 
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    for opt, sub in grouped.groupby("optimizer"):
+    bin_edges = np.linspace(0.0, 1.0, bins + 1)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+    for gamma, probs_list in sorted(gamma_to_probs.items()):
+        losses_list = gamma_to_losses[gamma]
+        p_arr = np.asarray(probs_list, dtype=np.float32)
+        l_arr = np.asarray(losses_list, dtype=np.float32)
+
+        # Filter to valid [0,1] range just in case
+        mask = (p_arr >= 0.0) & (p_arr <= 1.0)
+        p_arr = p_arr[mask]
+        l_arr = l_arr[mask]
+
+        if p_arr.size == 0:
+            continue
+
+        # Digitize probabilities into bins and compute mean loss per bin
+        indices = np.digitize(p_arr, bin_edges) - 1  # 0..bins-1
+        mean_loss = np.zeros(bins, dtype=np.float32)
+        counts = np.zeros(bins, dtype=np.int64)
+
+        for i, loss_val in zip(indices, l_arr):
+            if 0 <= i < bins:
+                mean_loss[i] += loss_val
+                counts[i] += 1
+
+        # Avoid division by zero
+        valid = counts > 0
+        mean_loss[valid] /= counts[valid]
+        mean_loss[~valid] = np.nan
+
         ax.plot(
-            sub["gamma"],
-            sub[metric],
-            marker="o",
+            bin_centers,
+            mean_loss,
+            marker="",
             linewidth=2,
-            label=opt,
+            label=f"$\\gamma={gamma}$",
         )
 
-    ax.set_xlabel("Focal gamma", fontsize=12, fontweight="bold")
-    ax.set_ylabel(metric.replace("_", " ").title(), fontsize=12, fontweight="bold")
+    ax.set_xlim(0.0, 1.0)
+    ax.set_xlabel(r"Probability $p_t$", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Focal loss", fontsize=12, fontweight="bold")
     title_model = f" ({model})" if model is not None else ""
     dataset_name = exp_dict.get("dataset", "")
     dataset_suffix = f" - {dataset_name}" if dataset_name else ""
-    ax.set_title(f"{metric.replace('_', ' ').title()} vs. Focal Gamma{title_model}{dataset_suffix}", fontsize=14, fontweight="bold")
+    ax.set_title(f"Empirical Focal Loss vs. Probability{title_model}{dataset_suffix}", fontsize=14, fontweight="bold")
     ax.grid(True, alpha=0.3)
-    ax.legend(title="Optimizer")
+    ax.legend(title="Focal gamma")
 
     plt.tight_layout()
 
     if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        print(f"Saved focal gamma plot to {save_path}")
+        print(f"Saved focal loss vs probability plot to {save_path}")
 
     if show:
         plt.show()

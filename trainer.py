@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import time
-from typing import Dict, List, Callable
+from typing import Dict, List, Callable, Any
 import numpy as np
 
 from infra.metrics import dice_score, iou_score, accuracy, sensitivity, specificity
@@ -83,8 +83,14 @@ class Trainer:
         self.model.eval()
         total_loss = 0.0
         metric_values = {name: [] for name in self.metrics.keys()}
-        prob_samples: List[np.ndarray] = []
-        loss_samples: List[np.ndarray] = []
+
+        # For FocalLoss: accumulate full loss vs probability statistics per bin (no subsampling)
+        use_focal_bins = isinstance(self.loss_fn, FocalLoss)
+        if use_focal_bins:
+            num_bins = 50
+            bin_edges = torch.linspace(0.0, 1.0, num_bins + 1, device=self.device)
+            bin_sums = torch.zeros(num_bins, device=self.device)
+            bin_counts = torch.zeros(num_bins, device=self.device)
         
         with torch.no_grad():
             desc = f"{desc_prefix}Evaluating" if desc_prefix else "Evaluating"
@@ -110,32 +116,33 @@ class Trainer:
                 outputs = self.model(images)
 
                 # Support losses that take an additional mask argument (e.g., FocalLoss with ROI/pos mask)
-                if isinstance(self.loss_fn, FocalLoss):
+                if use_focal_bins:
                     loss = self.loss_fn(outputs, masks, roi_mask)
 
-                    # Additionally, collect a subsample of (p_t, focal_loss) for analysis/plotting
-                    with torch.no_grad():
-                        p = torch.sigmoid(outputs)
-                        # probability of the true class
-                        p_t = p * masks + (1 - p) * (1 - masks)
+                    # Additionally, accumulate full (p_t, focal_loss) statistics per bin for analysis/plotting
+                    p = torch.sigmoid(outputs)
+                    # probability of the true class
+                    p_t = p * masks + (1 - p) * (1 - masks)
 
-                        # base CE term
-                        ce = -torch.log(p_t.clamp_min(1e-8))
+                    # base CE term
+                    ce = -torch.log(p_t.clamp_min(1e-8))
 
-                        alpha = self.loss_fn.alpha
-                        gamma = self.loss_fn.gamma
-                        alpha_t = alpha * masks + (1 - alpha) * (1 - masks)
-                        focal_per_pixel = alpha_t * (1 - p_t) ** gamma * ce
+                    alpha = self.loss_fn.alpha
+                    gamma = self.loss_fn.gamma
+                    alpha_t = alpha * masks + (1 - alpha) * (1 - masks)
+                    focal_per_pixel = alpha_t * (1 - p_t) ** gamma * ce
 
-                        # flatten and randomly subsample for storage
-                        p_t_flat = p_t.view(-1)
-                        focal_flat = focal_per_pixel.view(-1)
-                        n_total = p_t_flat.numel()
-                        if n_total > 0:
-                            n_sample = min(5000, n_total)
-                            idx = torch.randperm(n_total, device=p_t_flat.device)[:n_sample]
-                            prob_samples.append(p_t_flat[idx].cpu().numpy())
-                            loss_samples.append(focal_flat[idx].cpu().numpy())
+                    # flatten and bin without subsampling
+                    p_t_flat = p_t.view(-1)
+                    focal_flat = focal_per_pixel.view(-1)
+
+                    if p_t_flat.numel() > 0:
+                        # bin indices: 0..num_bins-1
+                        indices = torch.bucketize(p_t_flat, bin_edges) - 1
+                        indices = indices.clamp(min=0, max=num_bins - 1)
+                        # accumulate sums and counts
+                        bin_sums.scatter_add_(0, indices, focal_flat)
+                        bin_counts.scatter_add_(0, indices, torch.ones_like(focal_flat))
                 else:
                     loss = self.loss_fn(outputs, masks)
                 
@@ -152,10 +159,12 @@ class Trainer:
 
         result: Dict[str, Any] = {'loss': avg_loss, **avg_metrics}
 
-        # Attach sampled probability / loss pairs for analysis if we collected any
-        if prob_samples and loss_samples:
-            result["probability_samples"] = np.concatenate(prob_samples).tolist()
-            result["focal_loss_samples"] = np.concatenate(loss_samples).tolist()
+        # Attach binned probability / loss statistics for FocalLoss if available
+        if use_focal_bins and bin_counts.sum() > 0:
+            bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+            mean_loss = bin_sums / (bin_counts + 1e-8)
+            result["focal_bin_centers"] = bin_centers.cpu().tolist()
+            result["focal_loss_by_bin"] = mean_loss.cpu().tolist()
         
         return result
 
