@@ -29,15 +29,19 @@ models:
   - "EncoderDecoder"
   - "Unet"
 
+# For now, run the ablation only on DRIVE
 datasets:
-  - "PH2"
   - "DRIVE"
 
+# Focal loss with different gamma values (1 to 5)
 losses:
-  - "BCE"
-  - "Focal"
-  - "WeightedBCE"
+  - "Focal1"
+  - "Focal2"
+  - "Focal3"
+  - "Focal4"
+  - "Focal5"
 
+# Only compare SGD vs AdamW
 optimizers:
   - "adamW"
   - "sgd"

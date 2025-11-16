@@ -91,12 +91,27 @@ class Experiment:
     
     @staticmethod
     def get_loss(loss_name: str):
-        """Get loss function by name"""
+        """Get loss function by name (supports Focal with different gammas via name suffix).
+        
+        Examples:
+            'Focal'      -> FocalLoss(gamma=2)  # default
+            'Focal1'     -> FocalLoss(gamma=1)
+            'Focal_3'    -> FocalLoss(gamma=3)
+            'focal-g5'   -> FocalLoss(gamma=5)
+        """
+        raw_name = loss_name
         loss_name = loss_name.lower()
         if loss_name in ['bce', 'cross_entropy']:
             return BCE()
-        elif loss_name == 'focal':
-            return FocalLoss()
+        elif loss_name.startswith('focal'):
+            # Default gamma
+            gamma = 2
+            # Extract any digits in the name as gamma if present
+            digits = ''.join(ch for ch in loss_name if ch.isdigit())
+            if digits:
+                gamma = int(digits)
+            print(f"Using FocalLoss with gamma={gamma} for loss='{raw_name}'")
+            return FocalLoss(gamma=gamma)
         elif loss_name == 'weightedbce':
             return WeightedBCE()
         else:
@@ -197,10 +212,11 @@ class Experiment:
             dataset_experiments = []
             
             # Track best model for this dataset (for checkpoint saving)
-            # Use Dice score as the primary metric (better for segmentation than loss)
+            # Use sensitivity (recall for positive class) as the primary metric
             best_dataset_state = None
-            best_dataset_dice = 0.0
+            best_dataset_sensitivity = 0.0
             best_dataset_loss = float('inf')
+            best_dataset_dice = 0.0
             best_dataset_config = None
             
             for model_name in models:
@@ -230,14 +246,20 @@ class Experiment:
                             loss_name=loss_name
                         )
                         
-                        print(f"      Best Epoch: {results['best_epoch']}, Dice: {results['best_val_dice']:.4f}")
+                        print(
+                            f"      Best Epoch: {results['best_epoch']}, "
+                            f"Sensitivity: {results.get('best_val_sensitivity', 0.0):.4f}, "
+                            f"Dice: {results['best_val_dice']:.4f}"
+                        )
                         
                         # Check if this is the best model for this dataset
-                        # Save based on Dice score (better metric for segmentation than loss)
+                        # Save based on sensitivity (recall for positive class)
                         # Save immediately when we find a better one (overwrites previous checkpoint)
-                        if results['best_val_dice'] > best_dataset_dice:
-                            best_dataset_dice = results['best_val_dice']
+                        current_sens = results.get('best_val_sensitivity', 0.0)
+                        if current_sens > best_dataset_sensitivity:
+                            best_dataset_sensitivity = current_sens
                             best_dataset_loss = results['best_val_loss']
+                            best_dataset_dice = results['best_val_dice']
                             # Save the model state dict immediately (before it gets overwritten)
                             best_dataset_state = model.state_dict().copy()
                             best_dataset_config = {
@@ -258,6 +280,7 @@ class Experiment:
                                     'dataset': dataset_name,
                                     'best_config': best_dataset_config,
                                     'best_val_loss': best_dataset_loss,
+                                    'best_val_sensitivity': best_dataset_sensitivity,
                                     'best_val_dice': best_dataset_dice,
                                     'model_state_dict': best_dataset_state,
                                 }, checkpoint_path)
@@ -277,7 +300,11 @@ class Experiment:
                 checkpoint_path = Path(self.settings.checkpoint_dir) / f"{self.experiment_name}_{dataset_name}_best.pth"
                 print(f"\n  Best checkpoint for {dataset_name}: {checkpoint_path.name}")
                 print(f"    Config: {best_dataset_config['model']} + {best_dataset_config['loss']} + {best_dataset_config['optimizer']}")
-                print(f"    Val Loss: {best_dataset_loss:.4f}, Val Dice: {best_dataset_dice:.4f}")
+                print(
+                    f"    Val Loss: {best_dataset_loss:.4f}, "
+                    f"Val Sensitivity: {best_dataset_sensitivity:.4f}, "
+                    f"Val Dice: {best_dataset_dice:.4f}"
+                )
             
             # Save all experiments for this dataset to a single JSON file
             self.tracker.save_dataset_results(
@@ -356,6 +383,7 @@ class Experiment:
         # Training loop
         best_val_loss = float('inf')
         best_val_dice = 0.0
+        best_val_sensitivity = 0.0
         best_epoch = 0
         start_time = time.time()
         
@@ -381,7 +409,10 @@ class Experiment:
                 scheduler.step()
             
             # Check for best model (checkpoint saving is now done per-dataset in run_all)
-            if val_metrics['loss'] < best_val_loss:
+            # Use sensitivity (recall for positive class) as primary selection metric
+            current_sens = val_metrics.get('sensitivity', 0.0)
+            if current_sens > best_val_sensitivity:
+                best_val_sensitivity = current_sens
                 best_val_loss = val_metrics['loss']
                 best_val_dice = val_metrics.get('dice', 0.0)
                 best_epoch = epoch + 1
@@ -403,6 +434,7 @@ class Experiment:
             'best_epoch': best_epoch,
             'best_val_loss': best_val_loss,
             'best_val_dice': best_val_dice,
+            'best_val_sensitivity': best_val_sensitivity,
             'final_train_metrics': train_history[-1],
             'final_val_metrics': val_history[-1],
             'best_val_metrics': val_history[best_epoch - 1] if best_epoch > 0 else val_history[-1],
