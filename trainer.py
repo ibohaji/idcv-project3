@@ -160,11 +160,15 @@ class Trainer:
         result: Dict[str, Any] = {'loss': avg_loss, **avg_metrics}
 
         # Attach binned probability / loss statistics for FocalLoss if available
-        if use_focal_bins and bin_counts.sum() > 0:
-            bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-            mean_loss = bin_sums / (bin_counts + 1e-8)
-            result["focal_bin_centers"] = bin_centers.cpu().tolist()
-            result["focal_loss_by_bin"] = mean_loss.cpu().tolist()
+        if use_focal_bins:
+            if bin_counts.sum() > 0:
+                bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+                mean_loss = bin_sums / (bin_counts + 1e-8)
+                result["focal_bin_centers"] = bin_centers.cpu().tolist()
+                result["focal_loss_by_bin"] = mean_loss.cpu().tolist()
+            else:
+                # Debug: this shouldn't happen if we have data
+                print(f"WARNING: FocalLoss detected but bin_counts.sum() = 0 (no pixels processed?)")
         
         return result
 

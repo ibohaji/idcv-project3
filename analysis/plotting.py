@@ -78,7 +78,7 @@ def plot_metric_comparison(df: pd.DataFrame,
                           title: Optional[str] = None,
                           show: bool = True):
     """
-    Create bar plot comparing a metric across different configurations.
+    Create line/scatter plot comparing a metric across different configurations.
     
     Args:
         df: DataFrame with experiment results
@@ -94,17 +94,24 @@ def plot_metric_comparison(df: pd.DataFrame,
     grouped = df.groupby(group_by)[metric].agg(['mean', 'std']).reset_index()
     grouped = grouped.sort_values('mean', ascending=False)
     
-    # Create bar plot
+    # Use line plot with error bars
     x_pos = np.arange(len(grouped))
-    bars = ax.bar(x_pos, grouped['mean'], yerr=grouped['std'], 
-                  capsize=5, alpha=0.7, edgecolor='black', linewidth=1.5)
+    ax.errorbar(x_pos, grouped['mean'], yerr=grouped['std'], 
+               marker='o', markersize=10, linewidth=2.5, capsize=5, capthick=2,
+               color='steelblue', markerfacecolor='white', markeredgecolor='steelblue', 
+               markeredgewidth=2, elinewidth=1.5)
     
-    # Add value labels on bars
-    for i, (bar, mean_val) in enumerate(zip(bars, grouped['mean'])):
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height,
-                f'{mean_val:.4f}',
-                ha='center', va='bottom', fontsize=10, fontweight='bold')
+    # Add scatter points for individual experiments
+    for idx, (_, row) in enumerate(grouped.iterrows()):
+        param_val = row[group_by]
+        param_data = df[df[group_by] == param_val][metric].values
+        ax.scatter([idx] * len(param_data), param_data, 
+                  alpha=0.4, s=50, color='steelblue', zorder=3)
+    
+    # Add value labels
+    for i, (x, mean_val) in enumerate(zip(x_pos, grouped['mean'])):
+        ax.text(x, mean_val, f' {mean_val:.4f}',
+               ha='left', va='bottom', fontsize=9, fontweight='bold')
     
     ax.set_xlabel(group_by.capitalize(), fontsize=12, fontweight='bold')
     ax.set_ylabel(metric.replace('_', ' ').title(), fontsize=12, fontweight='bold')
@@ -178,7 +185,7 @@ def plot_all_metrics_comparison(df: pd.DataFrame,
                                title: str = "All Metrics Comparison",
                                show: bool = True):
     """
-    Create grouped bar chart comparing multiple metrics.
+    Create line plot comparing multiple metrics.
     
     Args:
         df: DataFrame with experiment results
@@ -193,15 +200,14 @@ def plot_all_metrics_comparison(df: pd.DataFrame,
     # Prepare data
     grouped = df.groupby(group_by)[metrics].mean()
     x_pos = np.arange(len(grouped))
-    width = 0.8 / len(metrics)
     
-    # Create bars for each metric
-    colors = plt.cm.Set3(np.linspace(0, 1, len(metrics)))
+    # Create line plots for each metric
+    colors = plt.cm.tab10(np.linspace(0, 1, len(metrics)))
     for i, metric in enumerate(metrics):
-        offset = (i - len(metrics)/2) * width + width/2
-        bars = ax.bar(x_pos + offset, grouped[metric], width, 
-                     label=metric.replace('_', ' ').title(), 
-                     color=colors[i], alpha=0.8, edgecolor='black', linewidth=1)
+        ax.plot(x_pos, grouped[metric], marker='o', markersize=8, linewidth=2.5,
+               label=metric.replace('_', ' ').replace('best val ', '').title(), 
+               color=colors[i], markerfacecolor='white', markeredgecolor=colors[i], 
+               markeredgewidth=2)
     
     ax.set_xlabel(group_by.capitalize(), fontsize=12, fontweight='bold')
     ax.set_ylabel('Metric Value', fontsize=12, fontweight='bold')
@@ -284,88 +290,65 @@ def plot_learning_curves_all_experiments(experiment_dict: Dict[str, Any],
         plt.close()
 
 
-def plot_ablation_study_summary(df: pd.DataFrame,
-                               save_path: Optional[Path] = None,
-                               show: bool = True):
+def plot_metric_by_ablation_parameter(df: pd.DataFrame,
+                                     metric: str,
+                                     ablation_param: str,
+                                     save_path: Optional[Path] = None,
+                                     dataset_name: str = "",
+                                     show: bool = True):
     """
-    Create comprehensive ablation study summary with multiple subplots.
+    Plot a single metric grouped by an ablation parameter using line/scatter plot.
     
     Args:
-        df: DataFrame with all experiment results
+        df: DataFrame with experiment results
+        metric: Metric name to plot (e.g., 'best_val_dice', 'best_val_sensitivity')
+        ablation_param: Parameter to group by ('model', 'loss', or 'optimizer')
         save_path: Optional path to save the figure
+        dataset_name: Dataset name for title
         show: Whether to display the plot
     """
-    fig = plt.figure(figsize=(20, 12))
-    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+    fig, ax = plt.subplots(figsize=(10, 6))
     
-    # 1. Best Dice by Model
-    ax1 = fig.add_subplot(gs[0, 0])
-    model_dice = df.groupby('model')['best_val_dice'].mean().sort_values(ascending=False)
-    ax1.bar(range(len(model_dice)), model_dice.values, color='skyblue', edgecolor='black')
-    ax1.set_xticks(range(len(model_dice)))
-    ax1.set_xticklabels(model_dice.index, rotation=45, ha='right')
-    ax1.set_ylabel('Dice Score', fontweight='bold')
-    ax1.set_title('Best Dice by Model', fontweight='bold')
-    ax1.grid(True, alpha=0.3, axis='y')
+    grouped = df.groupby(ablation_param)[metric].mean().sort_values(ascending=False)
+    colors = plt.cm.viridis(np.linspace(0, 1, len(grouped)))
     
-    # 2. Best Dice by Loss
-    ax2 = fig.add_subplot(gs[0, 1])
-    loss_dice = df.groupby('loss')['best_val_dice'].mean().sort_values(ascending=False)
-    ax2.bar(range(len(loss_dice)), loss_dice.values, color='lightcoral', edgecolor='black')
-    ax2.set_xticks(range(len(loss_dice)))
-    ax2.set_xticklabels(loss_dice.index, rotation=45, ha='right')
-    ax2.set_ylabel('Dice Score', fontweight='bold')
-    ax2.set_title('Best Dice by Loss Function', fontweight='bold')
-    ax2.grid(True, alpha=0.3, axis='y')
+    # Use line plot with markers instead of bars
+    x_pos = range(len(grouped))
+    ax.plot(x_pos, grouped.values, marker='o', markersize=10, linewidth=2.5, 
+            color='steelblue', markerfacecolor='white', markeredgecolor='steelblue', 
+            markeredgewidth=2, label='Mean')
     
-    # 3. Best Dice by Optimizer
-    ax3 = fig.add_subplot(gs[0, 2])
-    opt_dice = df.groupby('optimizer')['best_val_dice'].mean().sort_values(ascending=False)
-    ax3.bar(range(len(opt_dice)), opt_dice.values, color='lightgreen', edgecolor='black')
-    ax3.set_xticks(range(len(opt_dice)))
-    ax3.set_xticklabels(opt_dice.index, rotation=45, ha='right')
-    ax3.set_ylabel('Dice Score', fontweight='bold')
-    ax3.set_title('Best Dice by Optimizer', fontweight='bold')
-    ax3.grid(True, alpha=0.3, axis='y')
+    # Add scatter points for individual experiments
+    for param_val in grouped.index:
+        param_data = df[df[ablation_param] == param_val][metric].values
+        x_idx = list(grouped.index).index(param_val)
+        ax.scatter([x_idx] * len(param_data), param_data, 
+                  alpha=0.4, s=50, color=colors[x_idx], zorder=3)
     
-    # 4. Heatmap: Model x Loss
-    ax4 = fig.add_subplot(gs[1, 0])
-    pivot1 = df.pivot_table(values='best_val_dice', index='model', columns='loss', aggfunc='mean')
-    sns.heatmap(pivot1, annot=True, fmt='.3f', cmap='YlOrRd', ax=ax4, cbar_kws={'label': 'Dice'})
-    ax4.set_title('Dice: Model × Loss', fontweight='bold')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(grouped.index, rotation=45, ha='right', fontsize=11)
+    ax.set_ylabel(metric.replace('_', ' ').replace('best val ', '').title(), fontsize=12, fontweight='bold')
+    ax.set_xlabel(ablation_param.capitalize(), fontsize=12, fontweight='bold')
     
-    # 5. Heatmap: Model x Optimizer
-    ax5 = fig.add_subplot(gs[1, 1])
-    pivot2 = df.pivot_table(values='best_val_dice', index='model', columns='optimizer', aggfunc='mean')
-    sns.heatmap(pivot2, annot=True, fmt='.3f', cmap='YlOrRd', ax=ax5, cbar_kws={'label': 'Dice'})
-    ax5.set_title('Dice: Model × Optimizer', fontweight='bold')
+    metric_clean = metric.replace('best_val_', '').replace('_', ' ').title()
+    title = f'{metric_clean} by {ablation_param.capitalize()}'
+    if dataset_name:
+        title = f'{dataset_name} - {title}'
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
     
-    # 6. Heatmap: Loss x Optimizer
-    ax6 = fig.add_subplot(gs[1, 2])
-    pivot3 = df.pivot_table(values='best_val_dice', index='loss', columns='optimizer', aggfunc='mean')
-    sns.heatmap(pivot3, annot=True, fmt='.3f', cmap='YlOrRd', ax=ax6, cbar_kws={'label': 'Dice'})
-    ax6.set_title('Dice: Loss × Optimizer', fontweight='bold')
+    # Add value labels on points
+    for i, (x, val) in enumerate(zip(x_pos, grouped.values)):
+        ax.text(x, val, f' {val:.4f}',
+               ha='left', va='bottom', fontsize=9, fontweight='bold')
     
-    # 7. All metrics comparison (best validation)
-    ax7 = fig.add_subplot(gs[2, :])
-    metrics_to_plot = ['best_val_dice', 'best_val_iou', 'best_val_accuracy', 
-                      'best_val_sensitivity', 'best_val_specificity']
-    df_melted = df.melt(id_vars=['config'], value_vars=metrics_to_plot,
-                       var_name='metric', value_name='value')
-    df_melted['metric'] = df_melted['metric'].str.replace('best_val_', '').str.capitalize()
-    
-    sns.boxplot(data=df_melted, x='metric', y='value', ax=ax7, palette='Set2')
-    ax7.set_xlabel('Metric', fontweight='bold')
-    ax7.set_ylabel('Value', fontweight='bold')
-    ax7.set_title('Distribution of Best Validation Metrics', fontweight='bold')
-    ax7.tick_params(axis='x', rotation=45)
-    ax7.grid(True, alpha=0.3, axis='y')
-    
-    plt.suptitle('Ablation Study Summary', fontsize=16, fontweight='bold', y=0.995)
+    plt.tight_layout()
     
     if save_path:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Saved ablation study summary to {save_path}")
+        print(f"Saved {metric_clean} by {ablation_param} plot to {save_path}")
     
     if show:
         plt.show()
@@ -373,47 +356,55 @@ def plot_ablation_study_summary(df: pd.DataFrame,
         plt.close()
 
 
-def plot_dataset_comparison(all_experiments: List[Dict[str, Any]],
-                           metric: str = 'best_val_dice',
-                           save_path: Optional[Path] = None,
-                           show: bool = True):
+def plot_dataset_metric_comparison(exp_dict: Dict[str, Any],
+                                  metric: str = 'best_val_dice',
+                                  save_path: Optional[Path] = None,
+                                  show: bool = True):
     """
-    Compare performance across datasets.
+    Plot a single metric comparison for one dataset using line/scatter plot.
     
     Args:
-        all_experiments: List of experiment dictionaries (one per dataset)
+        exp_dict: Experiment dictionary for one dataset
         metric: Metric to compare
         save_path: Optional path to save the figure
         show: Whether to display the plot
     """
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    df = extract_experiment_data(exp_dict)
+    dataset_name = exp_dict['dataset']
     
-    for idx, exp_dict in enumerate(all_experiments):
-        df = extract_experiment_data(exp_dict)
-        dataset_name = exp_dict['dataset']
-        
-        # Group by configuration
-        grouped = df.groupby('config')[metric].mean().sort_values(ascending=False)
-        
-        ax = axes[idx]
-        bars = ax.barh(range(len(grouped)), grouped.values, color=plt.cm.viridis(np.linspace(0, 1, len(grouped))))
-        ax.set_yticks(range(len(grouped)))
-        ax.set_yticklabels(grouped.index, fontsize=9)
-        ax.set_xlabel(metric.replace('_', ' ').title(), fontweight='bold')
-        ax.set_title(f'{dataset_name} - {metric.replace("_", " ").title()}', fontweight='bold')
-        ax.grid(True, alpha=0.3, axis='x')
-        
-        # Add value labels
-        for i, (bar, val) in enumerate(zip(bars, grouped.values)):
-            ax.text(val, bar.get_y() + bar.get_height()/2, 
-                   f' {val:.4f}', va='center', fontsize=9, fontweight='bold')
+    # Sort by metric value
+    df_sorted = df.sort_values(metric, ascending=False)
     
-    plt.suptitle('Dataset Comparison', fontsize=16, fontweight='bold')
+    fig, ax = plt.subplots(figsize=(12, max(6, len(df_sorted) * 0.4)))
+    
+    y_pos = range(len(df_sorted))
+    colors = plt.cm.viridis(np.linspace(0, 1, len(df_sorted)))
+    
+    # Use line plot with markers
+    ax.plot(df_sorted[metric].values, y_pos, marker='o', markersize=8, 
+            linewidth=2, color='steelblue', markerfacecolor='white', 
+            markeredgecolor='steelblue', markeredgewidth=2)
+    
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(df_sorted['config'].values, fontsize=9)
+    ax.set_xlabel(metric.replace('_', ' ').replace('best val ', '').title(), 
+                  fontsize=12, fontweight='bold')
+    ax.set_title(f'{dataset_name} - {metric.replace("_", " ").replace("best val ", "").title()} by Configuration', 
+                 fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='x')
+    
+    # Add value labels
+    for i, (y, val) in enumerate(zip(y_pos, df_sorted[metric].values)):
+        ax.text(val, y, f' {val:.4f}', va='center', fontsize=9, fontweight='bold')
+    
     plt.tight_layout()
     
     if save_path:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Saved dataset comparison to {save_path}")
+        metric_clean = metric.replace('_', ' ').replace('best val ', '').title()
+        print(f"Saved {dataset_name} {metric_clean} comparison to {save_path}")
     
     if show:
         plt.show()
@@ -452,9 +443,8 @@ def plot_focal_gamma_losses_from_json(
         print("No experiments found in JSON; nothing to plot.")
         return
 
-    # Collect samples per gamma
-    gamma_to_probs: Dict[int, List[float]] = {}
-    gamma_to_losses: Dict[int, List[float]] = {}
+    # Collect bin-wise data per gamma (each experiment has complete bin data)
+    gamma_to_data: Dict[int, Dict[str, np.ndarray]] = {}
 
     for exp in experiments:
         loss_name = exp.get("loss", "")
@@ -479,60 +469,81 @@ def plot_focal_gamma_losses_from_json(
 
         # Use the last validation epoch as representative
         last_val = val_history[-1]
+        
+        # Check for new bin-wise format (preferred, exact averages)
+        bin_centers = last_val.get("focal_bin_centers")
+        loss_by_bin = last_val.get("focal_loss_by_bin")
+        
+        if bin_centers is not None and loss_by_bin is not None:
+            # New format: directly use pre-computed bin-wise averages
+            p_arr = np.asarray(bin_centers, dtype=np.float32)
+            l_arr = np.asarray(loss_by_bin, dtype=np.float32)
+            
+            # Filter out NaN values (empty bins)
+            valid = ~np.isnan(l_arr)
+            p_arr = p_arr[valid]
+            l_arr = l_arr[valid]
+            
+            if p_arr.size > 0:
+                gamma_to_data[gamma] = {"probs": p_arr, "losses": l_arr}
+            continue
+        
+        # Fallback: check for old subsampled format (for backwards compatibility)
         probs = last_val.get("probability_samples")
         losses = last_val.get("focal_loss_samples")
+        
+        if probs is not None and losses is not None:
+            # Old format: need to bin the subsampled data
+            p_arr = np.asarray(probs, dtype=np.float32)
+            l_arr = np.asarray(losses, dtype=np.float32)
 
-        if probs is None or losses is None:
-            continue
+            # Filter to valid [0,1] range
+            mask = (p_arr >= 0.0) & (p_arr <= 1.0)
+            p_arr = p_arr[mask]
+            l_arr = l_arr[mask]
 
-        if gamma not in gamma_to_probs:
-            gamma_to_probs[gamma] = []
-            gamma_to_losses[gamma] = []
+            if p_arr.size > 0:
+                # Bin the data
+                bin_edges = np.linspace(0.0, 1.0, bins + 1)
+                bin_centers_old = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+                
+                indices = np.digitize(p_arr, bin_edges) - 1
+                indices = np.clip(indices, 0, bins - 1)
+                
+                mean_loss = np.zeros(bins, dtype=np.float32)
+                counts = np.zeros(bins, dtype=np.int64)
+                
+                for i, loss_val in zip(indices, l_arr):
+                    mean_loss[i] += loss_val
+                    counts[i] += 1
+                
+                valid = counts > 0
+                mean_loss[valid] /= counts[valid]
+                mean_loss[~valid] = np.nan
+                
+                valid_bins = ~np.isnan(mean_loss)
+                gamma_to_data[gamma] = {
+                    "probs": bin_centers_old[valid_bins],
+                    "losses": mean_loss[valid_bins]
+                }
 
-        gamma_to_probs[gamma].extend(probs)
-        gamma_to_losses[gamma].extend(losses)
-
-    if not gamma_to_probs:
-        print("No probability/loss samples found for FocalLoss; did you run with the updated Trainer?")
+    if not gamma_to_data:
+        print("No probability/loss data found for FocalLoss; did you run with the updated Trainer?")
+        print("Expected fields: 'focal_bin_centers' and 'focal_loss_by_bin' in validation history")
         return
 
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    bin_edges = np.linspace(0.0, 1.0, bins + 1)
-    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-
-    for gamma, probs_list in sorted(gamma_to_probs.items()):
-        losses_list = gamma_to_losses[gamma]
-        p_arr = np.asarray(probs_list, dtype=np.float32)
-        l_arr = np.asarray(losses_list, dtype=np.float32)
-
-        # Filter to valid [0,1] range just in case
-        mask = (p_arr >= 0.0) & (p_arr <= 1.0)
-        p_arr = p_arr[mask]
-        l_arr = l_arr[mask]
-
-        if p_arr.size == 0:
-            continue
-
-        # Digitize probabilities into bins and compute mean loss per bin
-        indices = np.digitize(p_arr, bin_edges) - 1  # 0..bins-1
-        mean_loss = np.zeros(bins, dtype=np.float32)
-        counts = np.zeros(bins, dtype=np.int64)
-
-        for i, loss_val in zip(indices, l_arr):
-            if 0 <= i < bins:
-                mean_loss[i] += loss_val
-                counts[i] += 1
-
-        # Avoid division by zero
-        valid = counts > 0
-        mean_loss[valid] /= counts[valid]
-        mean_loss[~valid] = np.nan
-
+    for gamma in sorted(gamma_to_data.keys()):
+        data = gamma_to_data[gamma]
+        p_arr = data["probs"]
+        l_arr = data["losses"]
+        
         ax.plot(
-            bin_centers,
-            mean_loss,
-            marker="",
+            p_arr,
+            l_arr,
+            marker="o",
+            markersize=3,
             linewidth=2,
             label=f"$\\gamma={gamma}$",
         )

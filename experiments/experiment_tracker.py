@@ -213,11 +213,11 @@ class Experiment:
             dataset_experiments = []
             
             # Track best model for this dataset (for checkpoint saving)
-            # Use sensitivity (recall for positive class) as the primary metric
+            # Use dice score as the primary metric
             best_dataset_state = None
-            best_dataset_sensitivity = 0.0
-            best_dataset_loss = float('inf')
             best_dataset_dice = 0.0
+            best_dataset_loss = float('inf')
+            best_dataset_sensitivity = 0.0
             best_dataset_config = None
             
             for model_name in models:
@@ -249,18 +249,18 @@ class Experiment:
                         
                         print(
                             f"      Best Epoch: {results['best_epoch']}, "
-                            f"Sensitivity: {results.get('best_val_sensitivity', 0.0):.4f}, "
-                            f"Dice: {results['best_val_dice']:.4f}"
+                            f"Dice: {results['best_val_dice']:.4f}, "
+                            f"Sensitivity: {results.get('best_val_sensitivity', 0.0):.4f}"
                         )
                         
                         # Check if this is the best model for this dataset
-                        # Save based on sensitivity (recall for positive class)
+                        # Save based on dice score (primary metric)
                         # Save immediately when we find a better one (overwrites previous checkpoint)
-                        current_sens = results.get('best_val_sensitivity', 0.0)
-                        if current_sens > best_dataset_sensitivity:
-                            best_dataset_sensitivity = current_sens
+                        current_dice = results.get('best_val_dice', 0.0)
+                        if current_dice > best_dataset_dice:
+                            best_dataset_dice = current_dice
                             best_dataset_loss = results['best_val_loss']
-                            best_dataset_dice = results['best_val_dice']
+                            best_dataset_sensitivity = results.get('best_val_sensitivity', 0.0)
                             # Save the model state dict immediately (before it gets overwritten)
                             best_dataset_state = model.state_dict().copy()
                             best_dataset_config = {
@@ -303,8 +303,8 @@ class Experiment:
                 print(f"    Config: {best_dataset_config['model']} + {best_dataset_config['loss']} + {best_dataset_config['optimizer']}")
                 print(
                     f"    Val Loss: {best_dataset_loss:.4f}, "
-                    f"Val Sensitivity: {best_dataset_sensitivity:.4f}, "
-                    f"Val Dice: {best_dataset_dice:.4f}"
+                    f"Val Dice: {best_dataset_dice:.4f}, "
+                    f"Val Sensitivity: {best_dataset_sensitivity:.4f}"
                 )
             
             # Save all experiments for this dataset to a single JSON file
@@ -410,12 +410,12 @@ class Experiment:
                 scheduler.step()
             
             # Check for best model (checkpoint saving is now done per-dataset in run_all)
-            # Use sensitivity (recall for positive class) as primary selection metric
-            current_sens = val_metrics.get('sensitivity', 0.0)
-            if current_sens > best_val_sensitivity:
-                best_val_sensitivity = current_sens
+            # Use dice score as primary selection metric
+            current_dice = val_metrics.get('dice', 0.0)
+            if current_dice > best_val_dice:
+                best_val_dice = current_dice
                 best_val_loss = val_metrics['loss']
-                best_val_dice = val_metrics.get('dice', 0.0)
+                best_val_sensitivity = val_metrics.get('sensitivity', 0.0)
                 best_epoch = epoch + 1
             
             # Display all metrics in a formatted table

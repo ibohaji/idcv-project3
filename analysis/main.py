@@ -1,24 +1,26 @@
-"""Main script to generate all analysis plots from experiment JSON files."""
+"""Main script to generate consolidated, multi-dimensional plots for scientific reports."""
 import argparse
 from pathlib import Path
 from typing import List, Dict, Any
-import pandas as pd
 
 from analysis.load_data import load_all_experiments, extract_experiment_data
-from analysis.plotting import (
-    plot_training_curves,
-    plot_metric_comparison,
-    plot_heatmap_comparison,
-    plot_all_metrics_comparison,
-    plot_learning_curves_all_experiments,
-    plot_ablation_study_summary,
-    plot_dataset_comparison
+from analysis.plotting_consolidated import (
+    plot_all_metrics_by_model,
+    plot_metrics_by_optimizer_and_loss,
+    plot_best_config_per_metric,
+    plot_training_curves_comparison,
+    plot_ablation_summary_consolidated,
+    plot_key_metrics_over_epochs,
+    plot_metric_tradeoffs,
+    plot_comprehensive_metrics_comparison,
+    plot_convergence_comparison
 )
 
 
 def generate_all_plots(output_dir: Path, save_dir: Path, show: bool = False):
     """
-    Generate all analysis plots from experiment JSON files.
+    Generate consolidated, multi-dimensional plots for scientific reports.
+    Only generates strategic plots that show multiple dimensions together.
     
     Args:
         output_dir: Directory containing experiment JSON files
@@ -27,17 +29,27 @@ def generate_all_plots(output_dir: Path, save_dir: Path, show: bool = False):
     """
     save_dir.mkdir(parents=True, exist_ok=True)
     
-    # Load all experiments
+    # Load only specific experiment files
     print("Loading experiment data...")
-    all_experiments = load_all_experiments(output_dir)
+    specific_files = ['segmentation_ph2_2.json', 'segmentation_DRIVE.json']
+    all_experiments = []
+    for filename in specific_files:
+        json_path = output_dir / filename
+        if json_path.exists():
+            from analysis.load_data import load_experiment_json
+            data = load_experiment_json(json_path)
+            all_experiments.append(data)
+            print(f"  Loaded: {filename}")
+        else:
+            print(f"  Warning: {filename} not found")
     
     if len(all_experiments) == 0:
-        print(f"No JSON files found in {output_dir}")
+        print(f"No experiment files found in {output_dir}")
         return
     
     print(f"Loaded {len(all_experiments)} experiment file(s)")
     
-    # Process each dataset
+    # Process each dataset - generate only strategic consolidated plots
     for exp_dict in all_experiments:
         dataset_name = exp_dict['dataset']
         print(f"\n{'='*60}")
@@ -51,161 +63,111 @@ def generate_all_plots(output_dir: Path, save_dir: Path, show: bool = False):
         df = extract_experiment_data(exp_dict)
         print(f"  Extracted {len(df)} experiment configurations")
         
-        # 1. Training curves for best configuration
-        best_config_idx = df['best_val_dice'].idxmax()
-        best_config = df.loc[best_config_idx]
-        best_exp = None
-        for exp in exp_dict['experiments']:
-            if (exp['model'] == best_config['model'] and 
-                exp['loss'] == best_config['loss'] and 
-                exp['optimizer'] == best_config['optimizer']):
-                best_exp = exp
-                break
+        print("  Generating consolidated plots...")
         
-        if best_exp:
-            results = best_exp['results']
-            train_history = results.get('train_history', [])
-            val_history = results.get('val_history', [])
-            epochs = list(range(1, len(train_history) + 1))
-            
-            plot_training_curves(
-                train_history, val_history, epochs,
-                metrics=['loss', 'dice', 'iou', 'accuracy'],
-                save_path=dataset_save_dir / f'{dataset_name}_best_config_training_curves.png',
-                title=f'{dataset_name} - Best Configuration Training Curves\n'
-                      f"{best_config['model']} + {best_config['loss']} + {best_config['optimizer']}",
-                show=show
-            )
-        
-        # 2. Metric comparisons by different factors
-        for group_by in ['model', 'loss', 'optimizer']:
-            plot_metric_comparison(
-                df, 'best_val_dice', group_by=group_by,
-                save_path=dataset_save_dir / f'{dataset_name}_dice_by_{group_by}.png',
-                show=show
-            )
-        
-        # 3. Heatmaps
-        plot_heatmap_comparison(
-            df, 'best_val_dice', row_var='model', col_var='loss',
-            save_path=dataset_save_dir / f'{dataset_name}_dice_heatmap_model_loss.png',
-            show=show
-        )
-        plot_heatmap_comparison(
-            df, 'best_val_dice', row_var='model', col_var='optimizer',
-            save_path=dataset_save_dir / f'{dataset_name}_dice_heatmap_model_optimizer.png',
-            show=show
-        )
-        plot_heatmap_comparison(
-            df, 'best_val_dice', row_var='loss', col_var='optimizer',
-            save_path=dataset_save_dir / f'{dataset_name}_dice_heatmap_loss_optimizer.png',
-            show=show
-        )
-        
-        # 4. All metrics comparison
-        plot_all_metrics_comparison(
+        # 1. All metrics by model (single plot showing dice, iou, sensitivity, specificity)
+        plot_all_metrics_by_model(
             df,
-            metrics=['best_val_dice', 'best_val_iou', 'best_val_accuracy', 
-                    'best_val_sensitivity', 'best_val_specificity'],
-            group_by='config',
-            save_path=dataset_save_dir / f'{dataset_name}_all_metrics_comparison.png',
-            title=f'{dataset_name} - All Metrics Comparison',
+            save_path=dataset_save_dir / f'{dataset_name}_all_metrics_by_model.png',
+            dataset_name=dataset_name,
             show=show
         )
         
-        # 5. Learning curves for all experiments
-        for metric in ['dice', 'iou', 'loss']:
-            plot_learning_curves_all_experiments(
-                exp_dict, metric=metric,
-                save_path=dataset_save_dir / f'{dataset_name}_learning_curves_{metric}.png',
-                show=show
-            )
+        # 2. Metrics by optimizer and loss (shows interaction)
+        plot_metrics_by_optimizer_and_loss(
+            df,
+            save_path=dataset_save_dir / f'{dataset_name}_metrics_by_optimizer_loss.png',
+            dataset_name=dataset_name,
+            show=show
+        )
         
-        # 6. Ablation study summary
-        plot_ablation_study_summary(
+        # 3. Best configuration per metric (which config wins for each metric)
+        plot_best_config_per_metric(
+            df,
+            save_path=dataset_save_dir / f'{dataset_name}_best_config_per_metric.png',
+            dataset_name=dataset_name,
+            show=show
+        )
+        
+        # 4. Training curves for best configuration (multiple metrics together)
+        plot_training_curves_comparison(
+            exp_dict,
+            metrics=['dice', 'iou', 'loss'],
+            save_path=dataset_save_dir / f'{dataset_name}_best_training_curves.png',
+            dataset_name=dataset_name,
+            show=show
+        )
+        
+        # 5. Comprehensive ablation summary (all comparisons in one figure)
+        plot_ablation_summary_consolidated(
             df,
             save_path=dataset_save_dir / f'{dataset_name}_ablation_summary.png',
+            dataset_name=dataset_name,
             show=show
         )
         
-        print(f"  Generated plots saved to: {dataset_save_dir}")
-    
-    # 7. Cross-dataset comparison
-    if len(all_experiments) > 1:
-        print(f"\n{'='*60}")
-        print("Generating cross-dataset comparisons...")
-        print(f"{'='*60}")
+        # 6. Key metrics over epochs (dice, sensitivity, specificity) - SCIENTIFIC FOCUS
+        plot_key_metrics_over_epochs(
+            exp_dict,
+            top_n=5,
+            save_path=dataset_save_dir / f'{dataset_name}_key_metrics_over_epochs.png',
+            dataset_name=dataset_name,
+            show=show
+        )
         
-        plot_dataset_comparison(
-            all_experiments, metric='best_val_dice',
-            save_path=save_dir / 'cross_dataset_comparison_dice.png',
+        # 7. Metric trade-offs (Dice vs Sensitivity, Dice vs Specificity)
+        plot_metric_tradeoffs(
+            exp_dict,
+            save_path=dataset_save_dir / f'{dataset_name}_metric_tradeoffs.png',
+            dataset_name=dataset_name,
             show=show
         )
-        plot_dataset_comparison(
-            all_experiments, metric='best_val_iou',
-            save_path=save_dir / 'cross_dataset_comparison_iou.png',
+        
+        # 8. Comprehensive metrics comparison (all configs, easy to read)
+        plot_comprehensive_metrics_comparison(
+            df,
+            save_path=dataset_save_dir / f'{dataset_name}_comprehensive_metrics.png',
+            dataset_name=dataset_name,
             show=show
         )
-    
-    # 8. Combined summary table
-    print(f"\n{'='*60}")
-    print("Generating summary tables...")
-    print(f"{'='*60}")
-    
-    all_dfs = []
-    for exp_dict in all_experiments:
-        df = extract_experiment_data(exp_dict)
-        all_dfs.append(df)
-    
-    combined_df = pd.concat(all_dfs, ignore_index=True)
-    
-    # Save summary CSV
-    summary_csv = save_dir / 'experiment_summary.csv'
-    summary_cols = ['dataset', 'model', 'loss', 'optimizer', 
-                   'best_val_dice', 'best_val_iou', 'best_val_accuracy',
-                   'best_val_sensitivity', 'best_val_specificity', 'best_epoch',
-                   'total_time_seconds']
-    combined_df[summary_cols].to_csv(summary_csv, index=False)
-    print(f"  Saved summary table to: {summary_csv}")
-    
-    # Print top configurations
-    print("\n" + "="*60)
-    print("TOP CONFIGURATIONS BY DATASET")
-    print("="*60)
-    for dataset in combined_df['dataset'].unique():
-        dataset_df = combined_df[combined_df['dataset'] == dataset]
-        top = dataset_df.nlargest(3, 'best_val_dice')
-        print(f"\n{dataset}:")
-        for idx, row in top.iterrows():
-            print(f"  {row['model']} + {row['loss']} + {row['optimizer']}: "
-                  f"Dice={row['best_val_dice']:.4f}, IoU={row['best_val_iou']:.4f}")
+        
+        # 9. Convergence comparison for dice, sensitivity, specificity
+        for metric in ['dice', 'sensitivity', 'specificity']:
+            plot_convergence_comparison(
+                exp_dict,
+                metric=metric,
+                top_n=6,
+                save_path=dataset_save_dir / f'{dataset_name}_convergence_{metric}.png',
+                dataset_name=dataset_name,
+                show=show
+            )
+        
+        print(f"  Generated 9 scientific plots saved to: {dataset_save_dir}")
     
     print(f"\n{'='*60}")
-    print(f"All plots saved to: {save_dir}")
+    print("Plot generation complete!")
     print(f"{'='*60}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Generate analysis plots from experiment results')
-    parser.add_argument('--output-dir', type=str, default='./outputs',
-                       help='Directory containing experiment JSON files (default: ./outputs)')
-    parser.add_argument('--save-dir', type=str, default='./analysis/plots',
-                       help='Directory to save generated plots (default: ./analysis/plots)')
-    parser.add_argument('--show', action='store_true',
-                       help='Display plots (default: False, saves only)')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate consolidated analysis plots")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("outputs"),
+        help="Directory containing experiment JSON files"
+    )
+    parser.add_argument(
+        "--save-dir",
+        type=Path,
+        default=Path("analysis/plots"),
+        help="Directory to save generated plots"
+    )
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Display plots (default: False, saves only)"
+    )
     
     args = parser.parse_args()
-    
-    output_dir = Path(args.output_dir)
-    save_dir = Path(args.save_dir)
-    
-    if not output_dir.exists():
-        print(f"Error: Output directory {output_dir} does not exist")
-        return
-    
-    generate_all_plots(output_dir, save_dir, show=args.show)
-
-
-if __name__ == '__main__':
-    main()
-
+    generate_all_plots(args.output_dir, args.save_dir, args.show)
