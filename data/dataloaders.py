@@ -123,22 +123,22 @@ class PH2Dataset(torch.utils.data.Dataset):
 
 class DRIVEDataset(torch.utils.data.Dataset):
     def __init__(self, split='train', transform=None, path='C:/Users/ibrahim/Documents/DTU/introduction-dplrng-cv/project3/data/datasets/DRIVE/DRIVE/',
-                 train_ratio=0.7, val_ratio=0.15, seed=42):
+                 train_ratio=0.8, val_ratio=0.2, seed=42):
         """
         DRIVE dataset for retinal blood vessel segmentation.
         
         Args:
-            split: 'train' or 'test'
+            split: 'train', 'val', or 'test'
             transform: Albumentations transform or None
             path: Path to DRIVE dataset root directory
-            train_ratio: (unused, kept for API compatibility)
-            val_ratio: (unused, kept for API compatibility)
-            seed: (unused, kept for API compatibility)
+            train_ratio: Proportion of training data for training (0.8 = 16 images)
+            val_ratio: Proportion of training data for validation (0.2 = 4 images)
+            seed: Random seed for reproducible splits
             
         Note: 
-            - 'train' uses all images from DRIVE/training/ (images 21-40) with labels from '1st_manual'
-            - 'test' uses all images from DRIVE/test/ (images 01-20, no labels available)
-            - No internal split is performed; use external validation if needed
+            - DRIVE has 20 images in 'training/' folder (21-40) with ground truth
+            - We split these 20 images into train (16) and val (4) with a fixed seed
+            - The 'test/' folder (01-20) has no public ground truth, so it's not used
         """
         if transform is not None and not isinstance(transform, A.Compose):
             raise TypeError("Transform must be albumentations.Compose or None")
@@ -149,40 +149,49 @@ class DRIVEDataset(torch.utils.data.Dataset):
         self.data_path = os.path.normpath(path)
         self.split = split
         
-        if split == 'test':
-            # Test set: images 01-20 (no masks)
-            images_dir = os.path.join(self.data_path, 'test', 'images')
-            image_pattern = os.path.join(images_dir, '*_test.tif')
-            
-            self.images = sorted(glob.glob(image_pattern))
-            self.masks = None
-            self.fov_masks = None
-        elif split == 'train':
-            # Training set: use ALL images 21-40 from training/, no internal split
-            images_dir = os.path.join(self.data_path, 'training', 'images')
-            labels_dir = os.path.join(self.data_path, 'training', '1st_manual')
-            fov_dir = os.path.join(self.data_path, 'training', 'mask')
-            image_pattern = os.path.join(images_dir, '*_training.tif')
-            label_pattern = os.path.join(labels_dir, '*_manual1.gif')
-            fov_pattern = os.path.join(fov_dir, '*_training_mask.gif')
-            
-            self.images = sorted(glob.glob(image_pattern))
-            self.masks = sorted(glob.glob(label_pattern))
-            self.fov_masks = sorted(glob.glob(fov_pattern))
-            
-            if len(self.images) != len(self.masks) or len(self.images) != len(self.fov_masks):
-                raise ValueError(
-                    f"Mismatch: {len(self.images)} images, {len(self.masks)} labels, "
-                    f"{len(self.fov_masks)} FOV masks"
-                )
-            
-            if len(self.images) == 0:
-                raise ValueError(f"No images found in dataset at: {self.data_path}. Check the path and directory structure.")
-        else:
-            # 'val' is not supported for DRIVE without external split
-            self.images = []
-            self.masks = []
-            self.fov_masks = []
+        # Load all training images with ground truth
+        images_dir = os.path.join(self.data_path, 'training', 'images')
+        labels_dir = os.path.join(self.data_path, 'training', '1st_manual')
+        fov_dir = os.path.join(self.data_path, 'training', 'mask')
+        image_pattern = os.path.join(images_dir, '*_training.tif')
+        label_pattern = os.path.join(labels_dir, '*_manual1.gif')
+        fov_pattern = os.path.join(fov_dir, '*_training_mask.gif')
+        
+        all_images = sorted(glob.glob(image_pattern))
+        all_masks = sorted(glob.glob(label_pattern))
+        all_fov_masks = sorted(glob.glob(fov_pattern))
+        
+        if len(all_images) != len(all_masks) or len(all_images) != len(all_fov_masks):
+            raise ValueError(
+                f"Mismatch: {len(all_images)} images, {len(all_masks)} labels, "
+                f"{len(all_fov_masks)} FOV masks"
+            )
+        
+        if len(all_images) == 0:
+            raise ValueError(f"No images found in dataset at: {self.data_path}. Check the path and directory structure.")
+        
+        # Create train/val split with fixed seed for reproducibility
+        np.random.seed(seed)
+        indices = np.random.permutation(len(all_images))
+        
+        n_total = len(all_images)
+        n_train = int(n_total * train_ratio)
+        
+        train_indices = indices[:n_train]
+        val_indices = indices[n_train:]
+        
+        # Select indices based on split
+        if split == 'train':
+            split_indices = train_indices
+        elif split == 'val':
+            split_indices = val_indices
+        else:  # test
+            # No test set available with ground truth, return empty
+            split_indices = []
+        
+        self.images = [all_images[i] for i in split_indices]
+        self.masks = [all_masks[i] for i in split_indices]
+        self.fov_masks = [all_fov_masks[i] for i in split_indices]
     
     def __len__(self):
         'Returns the total number of samples'
