@@ -17,7 +17,7 @@ class FocalLoss(torch.nn.Module):
     2. Upweighting hard examples (low confidence predictions)
     3. Class-specific alpha balancing positive vs negative class
     """
-    def __init__(self, alpha=0.75, gamma=2):
+    def __init__(self, alpha=0.9, gamma=2):
         """
         Args:
             alpha: Weighting factor for positive class. Should be > 0.5 for imbalanced datasets
@@ -28,7 +28,7 @@ class FocalLoss(torch.nn.Module):
         self.alpha = alpha
         self.gamma = gamma
     
-    def forward(self, y_pred, y_true): 
+    def forward(self, y_pred, y_true, mask): 
         # Get probabilities
         p = torch.sigmoid(y_pred)
         
@@ -45,7 +45,10 @@ class FocalLoss(torch.nn.Module):
         ce_loss = -torch.log(p_t + 1e-8)  # Add small epsilon for numerical stability
         focal_loss = alpha_t * (1 - p_t) ** self.gamma * ce_loss
         
-        return focal_loss.mean()
+        masked_loss = focal_loss * mask
+        
+        return masked_loss.sum() / (mask.sum() + 1e-8)
+
 
 
 class BCE(torch.nn.Module): 
@@ -53,8 +56,8 @@ class BCE(torch.nn.Module):
         super().__init__()
 
     def forward(self, y_pred, y_true): 
-        return torch.nn.functional.binary_cross_entropy_with_logits(y_pred, y_true)
-
+        #return torch.nn.functional.binary_cross_entropy_with_logits(y_pred, y_true)
+        return -torch.log(torch.sigmoid(y_pred))
 
 class WeightedBCE(torch.nn.Module):
     """Apply weight alpha_i where i is the inverse frequency of the class pixel i

@@ -12,8 +12,8 @@ learning_rates:
 
 # Scheduler settings (shared across all experiments)
 scheduler: "step"
-scheduler_step_size: 30
-scheduler_gamma: 0.5
+scheduler_step_size: 50
+scheduler_gamma: 0.4
 
 # Validation
 val_split: 0.2

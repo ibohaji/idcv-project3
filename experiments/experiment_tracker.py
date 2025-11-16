@@ -196,9 +196,10 @@ class Experiment:
             dataset_experiments = []
             
             # Track best model for this dataset (for checkpoint saving)
+            # Use Dice score as the primary metric (better for segmentation than loss)
             best_dataset_state = None
-            best_dataset_loss = float('inf')
             best_dataset_dice = 0.0
+            best_dataset_loss = float('inf')
             best_dataset_config = None
             
             for model_name in models:
@@ -231,10 +232,11 @@ class Experiment:
                         print(f"      Best Epoch: {results['best_epoch']}, Dice: {results['best_val_dice']:.4f}")
                         
                         # Check if this is the best model for this dataset
+                        # Save based on Dice score (better metric for segmentation than loss)
                         # Save immediately when we find a better one (overwrites previous checkpoint)
-                        if results['best_val_loss'] < best_dataset_loss:
-                            best_dataset_loss = results['best_val_loss']
+                        if results['best_val_dice'] > best_dataset_dice:
                             best_dataset_dice = results['best_val_dice']
+                            best_dataset_loss = results['best_val_loss']
                             # Save the model state dict immediately (before it gets overwritten)
                             best_dataset_state = model.state_dict().copy()
                             best_dataset_config = {

@@ -7,6 +7,7 @@ from typing import Dict, List, Callable
 import numpy as np
 
 from infra.metrics import dice_score, iou_score, accuracy, sensitivity, specificity
+from infra.losses import FocalLoss
 
 
 class Trainer:
@@ -41,7 +42,12 @@ class Trainer:
             # Forward pass
             self.optimizer.zero_grad()
             outputs = self.model(images)
-            loss = self.loss_fn(outputs, masks)
+
+            # Support losses that take an additional mask argument (e.g., FocalLoss with ROI/pos mask)
+            if isinstance(self.loss_fn, FocalLoss):
+                loss = self.loss_fn(outputs, masks, masks)
+            else:
+                loss = self.loss_fn(outputs, masks)
             
             # Backward pass
             loss.backward()
@@ -78,7 +84,12 @@ class Trainer:
                 masks = masks.to(self.device).float()
                 
                 outputs = self.model(images)
-                loss = self.loss_fn(outputs, masks)
+
+                # Support losses that take an additional mask argument (e.g., FocalLoss with ROI/pos mask)
+                if isinstance(self.loss_fn, FocalLoss):
+                    loss = self.loss_fn(outputs, masks, masks)
+                else:
+                    loss = self.loss_fn(outputs, masks)
                 
                 total_loss += loss.item()
                 
