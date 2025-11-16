@@ -64,6 +64,7 @@ class PH2Dataset(torch.utils.data.Dataset):
         
         self.images = [all_images[i] for i in split_indices]
         self.masks = [all_masks[i] for i in split_indices]
+        # For PH2 we don't have a strict FOV, so we will use a full-ones ROI mask later
 
 
     def __len__(self):
@@ -91,21 +92,30 @@ class PH2Dataset(torch.utils.data.Dataset):
             elif label_array.dtype != np.uint8:
                 label_array = label_array.astype(np.uint8)
             
-            transformed = self.transform(image=image_array, mask=label_array) 
+            # Create a full-FOV ROI mask (all ones) with same spatial size as label
+            roi_array = np.ones_like(label_array, dtype=np.uint8) * 255
+            
+            # Apply same transforms to image, lesion mask, and ROI mask
+            transformed = self.transform(image=image_array, mask=label_array, mask2=roi_array) 
 
             X = transformed['image']
             Y = transformed['mask']
+            M = transformed['mask2']
             
-            # Normalize mask to [0, 1] - A.Normalize() skips masks, ToTensorV2() preserves values
+            # Normalize masks to [0, 1] - A.Normalize() skips masks, ToTensorV2() preserves values
             # Masks remain in [0, 255] after transform, but loss functions need [0, 1]
             if Y.max() > 1.0:
                 Y = Y.float() / 255.0
+            if M.max() > 1.0:
+                M = M.float() / 255.0
 
         else: 
             X = image 
             Y = label 
+            # No transforms: use a trivial full-ones ROI mask
+            M = torch.ones_like(torch.as_tensor(Y, dtype=torch.float32))
             
-        return X, Y
+        return X, Y, M
 
 
 class DRIVEDataset(torch.utils.data.Dataset):
@@ -147,14 +157,20 @@ class DRIVEDataset(torch.utils.data.Dataset):
             # Training set: images 21-40, use 1st_manual as labels
             images_dir = os.path.join(self.data_path, 'training', 'images')
             labels_dir = os.path.join(self.data_path, 'training', '1st_manual')
+            fov_dir = os.path.join(self.data_path, 'training', 'mask')
             image_pattern = os.path.join(images_dir, '*_training.tif')
             label_pattern = os.path.join(labels_dir, '*_manual1.gif')
+            fov_pattern = os.path.join(fov_dir, '*_training_mask.gif')
             
             all_images = sorted(glob.glob(image_pattern))
             all_labels = sorted(glob.glob(label_pattern))
+            all_fov_masks = sorted(glob.glob(fov_pattern))
             
-            if len(all_images) != len(all_labels):
-                raise ValueError(f"Mismatch: {len(all_images)} images but {len(all_labels)} labels")
+            if len(all_images) != len(all_labels) or len(all_images) != len(all_fov_masks):
+                raise ValueError(
+                    f"Mismatch: {len(all_images)} images, {len(all_labels)} labels, "
+                    f"{len(all_fov_masks)} FOV masks"
+                )
             
             if len(all_images) == 0:
                 raise ValueError(f"No images found in dataset at: {self.data_path}. Check the path and directory structure.")
@@ -177,6 +193,7 @@ class DRIVEDataset(torch.utils.data.Dataset):
             
             self.images = [all_images[i] for i in split_indices]
             self.masks = [all_labels[i] for i in split_indices]
+            self.fov_masks = [all_fov_masks[i] for i in split_indices]
         
         if self.split != 'test' and len(self.images) != len(self.masks):
             raise ValueError(f"Mismatch: {len(self.images)} images but {len(self.masks)} labels")
@@ -202,11 +219,14 @@ class DRIVEDataset(torch.utils.data.Dataset):
             # Train/val: return image and label from 1st_manual
             label_path = self.masks[idx]
             label = Image.open(label_path)
+            fov_path = self.fov_masks[idx]
+            fov = Image.open(fov_path)
             
             if self.transform:
                 # Convert to numpy arrays and ensure correct dtypes
                 image_array = np.array(image)
                 label_array = np.array(label)
+                fov_array = np.array(fov)
                 
                 # Ensure mask is uint8 (0-255) or float (0-1) for OpenCV compatibility
                 if label_array.dtype == bool:
@@ -215,17 +235,33 @@ class DRIVEDataset(torch.utils.data.Dataset):
                     label_array = (label_array * 255).astype(np.uint8)
                 elif label_array.dtype != np.uint8:
                     label_array = label_array.astype(np.uint8)
+
+                # Ensure FOV mask is uint8
+                if fov_array.dtype == bool:
+                    fov_array = fov_array.astype(np.uint8) * 255
+                elif fov_array.dtype != np.uint8 and fov_array.max() <= 1.0:
+                    fov_array = (fov_array * 255).astype(np.uint8)
+                elif fov_array.dtype != np.uint8:
+                    fov_array = fov_array.astype(np.uint8)
                 
-                transformed = self.transform(image=image_array, mask=label_array)
+                # Apply same transforms to image, lesion mask, and FOV mask
+                transformed = self.transform(image=image_array, mask=label_array, mask2=fov_array)
                 X = transformed['image']
                 Y = transformed['mask']
+                M = transformed['mask2']
                 
-                # Normalize mask to [0, 1] - A.Normalize() skips masks, ToTensorV2() preserves values
+                # Normalize masks to [0, 1] - A.Normalize() skips masks, ToTensorV2() preserves values
                 # Masks remain in [0, 255] after transform, but loss functions need [0, 1]
                 if Y.max() > 1.0:
                     Y = Y.float() / 255.0
+                if M.max() > 1.0:
+                    M = M.float() / 255.0
             else:
                 X = image
                 Y = label
+                # No transforms: use FOV mask directly as ROI mask
+                M = torch.as_tensor(np.array(fov), dtype=torch.float32)
+                if M.max() > 1.0:
+                    M = M / 255.0
             
-            return X, Y
+            return X, Y, M

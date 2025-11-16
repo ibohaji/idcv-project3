@@ -135,7 +135,8 @@ class Experiment:
             # Insert augmentation before normalization
             transforms = [A.Resize(resize_h, resize_w)] + augmentation + [A.Normalize(mean=mean, std=std), ToTensorV2()]
         
-        return A.Compose(transforms)
+        # Support an optional second mask (e.g., FOV / ROI) with the same transforms
+        return A.Compose(transforms, additional_targets={'mask2': 'mask'})
     
     def get_dataloaders(self, dataset_name: str, model_name: str = None):
         """Get train and val dataloaders for a dataset"""

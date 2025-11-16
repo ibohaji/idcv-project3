@@ -32,12 +32,23 @@ class Trainer:
         
         desc = f"{desc_prefix}Training" if desc_prefix else "Training"
         pbar = tqdm(dataloader, desc=desc)
-        for batch_idx, (images, masks) in enumerate(pbar):
+        for batch_idx, batch in enumerate(pbar):
+            # Support datasets that optionally return an additional ROI/FOV mask
+            if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                images, masks, roi_mask = batch
+            else:
+                images, masks = batch
+                roi_mask = masks  # fallback: use lesion mask as weighting mask
+
             images = images.to(self.device)
             # Handle mask format - ensure it's float and correct shape
             if masks.dim() == 3:  # Add channel dimension if missing
                 masks = masks.unsqueeze(1)
             masks = masks.to(self.device).float()
+
+            if roi_mask.dim() == 3:
+                roi_mask = roi_mask.unsqueeze(1)
+            roi_mask = roi_mask.to(self.device).float()
             
             # Forward pass
             self.optimizer.zero_grad()
@@ -45,7 +56,7 @@ class Trainer:
 
             # Support losses that take an additional mask argument (e.g., FocalLoss with ROI/pos mask)
             if isinstance(self.loss_fn, FocalLoss):
-                loss = self.loss_fn(outputs, masks, masks)
+                loss = self.loss_fn(outputs, masks, roi_mask)
             else:
                 loss = self.loss_fn(outputs, masks)
             
@@ -76,18 +87,29 @@ class Trainer:
         with torch.no_grad():
             desc = f"{desc_prefix}Evaluating" if desc_prefix else "Evaluating"
             pbar = tqdm(dataloader, desc=desc)
-            for images, masks in pbar:
+            for batch in pbar:
+                # Support datasets that optionally return an additional ROI/FOV mask
+                if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                    images, masks, roi_mask = batch
+                else:
+                    images, masks = batch
+                    roi_mask = masks  # fallback: use lesion mask as weighting mask
+
                 images = images.to(self.device)
                 # Handle mask format - ensure it's float and correct shape
                 if masks.dim() == 3:  # Add channel dimension if missing
                     masks = masks.unsqueeze(1)
                 masks = masks.to(self.device).float()
+
+                if roi_mask.dim() == 3:
+                    roi_mask = roi_mask.unsqueeze(1)
+                roi_mask = roi_mask.to(self.device).float()
                 
                 outputs = self.model(images)
 
                 # Support losses that take an additional mask argument (e.g., FocalLoss with ROI/pos mask)
                 if isinstance(self.loss_fn, FocalLoss):
-                    loss = self.loss_fn(outputs, masks, masks)
+                    loss = self.loss_fn(outputs, masks, roi_mask)
                 else:
                     loss = self.loss_fn(outputs, masks)
                 
