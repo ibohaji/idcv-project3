@@ -83,6 +83,8 @@ class Trainer:
         self.model.eval()
         total_loss = 0.0
         metric_values = {name: [] for name in self.metrics.keys()}
+        prob_samples: List[np.ndarray] = []
+        loss_samples: List[np.ndarray] = []
         
         with torch.no_grad():
             desc = f"{desc_prefix}Evaluating" if desc_prefix else "Evaluating"
@@ -110,6 +112,30 @@ class Trainer:
                 # Support losses that take an additional mask argument (e.g., FocalLoss with ROI/pos mask)
                 if isinstance(self.loss_fn, FocalLoss):
                     loss = self.loss_fn(outputs, masks, roi_mask)
+
+                    # Additionally, collect a subsample of (p_t, focal_loss) for analysis/plotting
+                    with torch.no_grad():
+                        p = torch.sigmoid(outputs)
+                        # probability of the true class
+                        p_t = p * masks + (1 - p) * (1 - masks)
+
+                        # base CE term
+                        ce = -torch.log(p_t.clamp_min(1e-8))
+
+                        alpha = self.loss_fn.alpha
+                        gamma = self.loss_fn.gamma
+                        alpha_t = alpha * masks + (1 - alpha) * (1 - masks)
+                        focal_per_pixel = alpha_t * (1 - p_t) ** gamma * ce
+
+                        # flatten and randomly subsample for storage
+                        p_t_flat = p_t.view(-1)
+                        focal_flat = focal_per_pixel.view(-1)
+                        n_total = p_t_flat.numel()
+                        if n_total > 0:
+                            n_sample = min(5000, n_total)
+                            idx = torch.randperm(n_total, device=p_t_flat.device)[:n_sample]
+                            prob_samples.append(p_t_flat[idx].cpu().numpy())
+                            loss_samples.append(focal_flat[idx].cpu().numpy())
                 else:
                     loss = self.loss_fn(outputs, masks)
                 
@@ -123,6 +149,13 @@ class Trainer:
         
         avg_loss = total_loss / len(dataloader)
         avg_metrics = {name: np.mean(vals) for name, vals in metric_values.items()}
+
+        result: Dict[str, Any] = {'loss': avg_loss, **avg_metrics}
+
+        # Attach sampled probability / loss pairs for analysis if we collected any
+        if prob_samples and loss_samples:
+            result["probability_samples"] = np.concatenate(prob_samples).tolist()
+            result["focal_loss_samples"] = np.concatenate(loss_samples).tolist()
         
-        return {'loss': avg_loss, **avg_metrics}
+        return result
 

@@ -1,4 +1,5 @@
 """Functions for creating various plots from experiment results."""
+import json
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -414,6 +415,90 @@ def plot_dataset_comparison(all_experiments: List[Dict[str, Any]],
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"Saved dataset comparison to {save_path}")
     
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_focal_gamma_losses_from_json(
+    json_path: Path,
+    metric: str = "best_val_loss",
+    model: Optional[str] = None,
+    show: bool = True,
+    save_path: Optional[Path] = None,
+) -> None:
+    """
+    Plot a line curve of a validation metric vs. FocalLoss gamma, for each optimizer.
+
+    Args:
+        json_path: Path to the dataset-level experiment JSON (e.g., segmentation_ablation_DRIVE_*.json)
+        metric: Column/metric to plot on the y-axis (e.g., 'best_val_loss', 'best_val_sensitivity')
+        model: Optional model name to filter by ('Unet', 'EncoderDecoder'); if None, use all and average.
+        show: Whether to display the plot.
+        save_path: Optional path to save the figure.
+    """
+    json_path = Path(json_path)
+    with json_path.open("r") as f:
+        exp_dict = json.load(f)
+
+    df = extract_experiment_data(exp_dict)
+
+    # Only keep Focal losses
+    df = df[df["loss"].str.lower().str.startswith("focal")]
+    if df.empty:
+        print("No Focal losses found in JSON; nothing to plot.")
+        return
+
+    # Optional: filter by model
+    if model is not None:
+        df = df[df["model"].str.lower() == model.lower()]
+        if df.empty:
+            print(f"No experiments found for model='{model}' with Focal losses.")
+            return
+
+    # Extract gamma from loss name, defaulting to 2 if no digits found
+    df = df.copy()
+    gammas = df["loss"].str.extract(r"(\d+)")[0].fillna("2").astype(int)
+    df["gamma"] = gammas
+
+    # Aggregate metric per optimizer & gamma
+    if metric not in df.columns:
+        raise ValueError(f"Metric '{metric}' not found in dataframe columns: {df.columns.tolist()}")
+
+    grouped = (
+        df.groupby(["optimizer", "gamma"])[metric]
+        .mean()
+        .reset_index()
+        .sort_values(["optimizer", "gamma"])
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    for opt, sub in grouped.groupby("optimizer"):
+        ax.plot(
+            sub["gamma"],
+            sub[metric],
+            marker="o",
+            linewidth=2,
+            label=opt,
+        )
+
+    ax.set_xlabel("Focal gamma", fontsize=12, fontweight="bold")
+    ax.set_ylabel(metric.replace("_", " ").title(), fontsize=12, fontweight="bold")
+    title_model = f" ({model})" if model is not None else ""
+    dataset_name = exp_dict.get("dataset", "")
+    dataset_suffix = f" - {dataset_name}" if dataset_name else ""
+    ax.set_title(f"{metric.replace('_', ' ').title()} vs. Focal Gamma{title_model}{dataset_suffix}", fontsize=14, fontweight="bold")
+    ax.grid(True, alpha=0.3)
+    ax.legend(title="Optimizer")
+
+    plt.tight_layout()
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"Saved focal gamma plot to {save_path}")
+
     if show:
         plt.show()
     else:
