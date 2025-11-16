@@ -200,63 +200,53 @@ class DRIVEDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         'Generates one sample of data'
         image_path = self.images[idx]
-        image = Image.open(image_path)
+        label_path = self.masks[idx]
+        fov_path = self.fov_masks[idx]
         
-        if self.split == 'test':
-            # Test set: return only image
-            if self.transform:
-                transformed = self.transform(image=np.array(image))
-                X = transformed['image']
-            else:
-                X = image
-            return X
-        else:
-            # Train/val: return image and label from 1st_manual
-            label_path = self.masks[idx]
-            label = Image.open(label_path)
-            fov_path = self.fov_masks[idx]
-            fov = Image.open(fov_path)
+        image = Image.open(image_path)
+        label = Image.open(label_path)
+        fov = Image.open(fov_path)
+        
+        if self.transform:
+            # Convert to numpy arrays and ensure correct dtypes
+            image_array = np.array(image)
+            label_array = np.array(label)
+            fov_array = np.array(fov)
             
-            if self.transform:
-                # Convert to numpy arrays and ensure correct dtypes
-                image_array = np.array(image)
-                label_array = np.array(label)
-                fov_array = np.array(fov)
-                
-                # Ensure mask is uint8 (0-255) or float (0-1) for OpenCV compatibility
-                if label_array.dtype == bool:
-                    label_array = label_array.astype(np.uint8) * 255
-                elif label_array.dtype != np.uint8 and label_array.max() <= 1.0:
-                    label_array = (label_array * 255).astype(np.uint8)
-                elif label_array.dtype != np.uint8:
-                    label_array = label_array.astype(np.uint8)
+            # Ensure mask is uint8 (0-255) or float (0-1) for OpenCV compatibility
+            if label_array.dtype == bool:
+                label_array = label_array.astype(np.uint8) * 255
+            elif label_array.dtype != np.uint8 and label_array.max() <= 1.0:
+                label_array = (label_array * 255).astype(np.uint8)
+            elif label_array.dtype != np.uint8:
+                label_array = label_array.astype(np.uint8)
 
-                # Ensure FOV mask is uint8
-                if fov_array.dtype == bool:
-                    fov_array = fov_array.astype(np.uint8) * 255
-                elif fov_array.dtype != np.uint8 and fov_array.max() <= 1.0:
-                    fov_array = (fov_array * 255).astype(np.uint8)
-                elif fov_array.dtype != np.uint8:
-                    fov_array = fov_array.astype(np.uint8)
-                
-                # Apply same transforms to image, lesion mask, and FOV mask
-                transformed = self.transform(image=image_array, mask=label_array, mask2=fov_array)
-                X = transformed['image']
-                Y = transformed['mask']
-                M = transformed['mask2']
-                
-                # Normalize masks to [0, 1] - A.Normalize() skips masks, ToTensorV2() preserves values
-                # Masks remain in [0, 255] after transform, but loss functions need [0, 1]
-                if Y.max() > 1.0:
-                    Y = Y.float() / 255.0
-                if M.max() > 1.0:
-                    M = M.float() / 255.0
-            else:
-                X = image
-                Y = label
-                # No transforms: use FOV mask directly as ROI mask
-                M = torch.as_tensor(np.array(fov), dtype=torch.float32)
-                if M.max() > 1.0:
-                    M = M / 255.0
+            # Ensure FOV mask is uint8
+            if fov_array.dtype == bool:
+                fov_array = fov_array.astype(np.uint8) * 255
+            elif fov_array.dtype != np.uint8 and fov_array.max() <= 1.0:
+                fov_array = (fov_array * 255).astype(np.uint8)
+            elif fov_array.dtype != np.uint8:
+                fov_array = fov_array.astype(np.uint8)
             
-            return X, Y, M
+            # Apply same transforms to image, lesion mask, and FOV mask
+            transformed = self.transform(image=image_array, mask=label_array, mask2=fov_array)
+            X = transformed['image']
+            Y = transformed['mask']
+            M = transformed['mask2']
+            
+            # Normalize masks to [0, 1] - A.Normalize() skips masks, ToTensorV2() preserves values
+            # Masks remain in [0, 255] after transform, but loss functions need [0, 1]
+            if Y.max() > 1.0:
+                Y = Y.float() / 255.0
+            if M.max() > 1.0:
+                M = M.float() / 255.0
+        else:
+            X = image
+            Y = label
+            # No transforms: use FOV mask directly as ROI mask
+            M = torch.as_tensor(np.array(fov), dtype=torch.float32)
+            if M.max() > 1.0:
+                M = M / 255.0
+        
+        return X, Y, M

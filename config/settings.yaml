@@ -39,12 +39,10 @@ losses:
   - "Focal2"
   - "Focal3"
   - "Focal4"
-  - "Focal5"
 
 # Only compare SGD vs AdamW
 optimizers:
   - "adamW"
-  - "sgd"
 
 # Dataset normalization statistics (calculated from training data)
 normalization:
