@@ -168,8 +168,9 @@ class Experiment:
             val_dataset = PH2Dataset(split='val', transform=val_transform, path=dataset_path)
             in_channels = 3  # PH2 images are RGB
         else:  # DRIVE
+            # DRIVE: use full training set for training, official test set for validation
             train_dataset = DRIVEDataset(split='train', transform=train_transform, path=dataset_path)
-            val_dataset = DRIVEDataset(split='val', transform=val_transform, path=dataset_path)
+            val_dataset = DRIVEDataset(split='test', transform=val_transform, path=dataset_path)
             in_channels = 3
         
         train_loader = DataLoader(

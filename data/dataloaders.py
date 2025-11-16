@@ -17,14 +17,14 @@ class PH2Dataset(torch.utils.data.Dataset):
             split: 'train', 'val', or 'test'
             transform: Albumentations transform or None
             path: Path to PH2 dataset directory
-            train_ratio: Proportion of data for training (only used if splitting internally)
-            val_ratio: Proportion of data for validation (only used if splitting internally)
-            test_ratio: Proportion of data for testing (only used if splitting internally)
+            train_ratio: Proportion of data for training
+            val_ratio: Proportion of data for validation
+            test_ratio: Proportion of data for testing
             seed: Random seed for reproducible splits
         
         Note:
-            PH2 has no predefined train/val/test splits, so we use all images for 'train'
-            and 'val'/'test' will just be empty unless you manually split externally.
+            PH2 has no predefined splits, so we create train/val/test splits internally
+            with a fixed seed for reproducibility.
         """
         if transform is not None and not isinstance(transform, A.Compose):
             raise TypeError("Transform must be albumentations.Compose or None")
@@ -45,14 +45,29 @@ class PH2Dataset(torch.utils.data.Dataset):
         if len(all_images) != len(all_masks):
             raise ValueError(f"Mismatch: {len(all_images)} images but {len(all_masks)} masks")
         
-        # No internal split: use all images for 'train', leave val/test empty
+        # Create splits with fixed seed for reproducibility
+        np.random.seed(seed)
+        indices = np.random.permutation(len(all_images))
+        
+        n_total = len(all_images)
+        n_train = int(n_total * train_ratio)
+        n_val = int(n_total * val_ratio)
+        # Test gets the remainder
+        
+        train_indices = indices[:n_train]
+        val_indices = indices[n_train:n_train + n_val]
+        test_indices = indices[n_train + n_val:]
+        
+        # Select indices based on split
         if split == 'train':
-            self.images = all_images
-            self.masks = all_masks
-        else:
-            # val and test have no predefined splits for PH2
-            self.images = []
-            self.masks = []
+            split_indices = train_indices
+        elif split == 'val':
+            split_indices = val_indices
+        else:  # test
+            split_indices = test_indices
+        
+        self.images = [all_images[i] for i in split_indices]
+        self.masks = [all_masks[i] for i in split_indices]
 
 
     def __len__(self):
